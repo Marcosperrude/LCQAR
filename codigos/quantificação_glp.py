@@ -83,7 +83,7 @@ def emissoes(POLUENTE, ANO):
 
         # Usando LogNorm para representar a escala logarítmica
         norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
-        df_filtrado_geometrias.plot(column=POLUENTE, cmap='plasma', legend=True, ax=ax, alpha=1, norm = norm)
+        df_filtrado_geometrias.plot(column=POLUENTE, cmap='jet', legend=True, ax=ax, alpha=1, norm = norm)
 
         plt.title(f'Emissão [g/s] de {POLUENTE} por Município em {ANO}')
         plt.xlabel('Longitude')
@@ -97,18 +97,40 @@ POLUENTE ='CH4(g/s)'
 ANO = 2010
 emissoes(POLUENTE, ANO)
 
+#%%
+anos = [2019, 2020, 2021, 2022]
 
+fig, axes = plt.subplots(2, 2, figsize=(20, 14), sharex=True, sharey=True)
 
+# Convertendo apenas uma vez antes do loop
+brasil_municipios['CD_MUN'] = brasil_municipios['CD_MUN'].astype(int)
 
-
-
-
-
-
-
-
-
-
+for i, ANO in enumerate(anos):
+    df_filtrado = df_quantificado.query('ANO == @ANO')
+    df_filtrado = df_filtrado[df_filtrado['CH4(g/s)'] != 0]
+        
+    df_filtrado['CODIGO IBGE'] = df_filtrado['CODIGO IBGE'].astype(int)
+    df_filtrado.rename(columns={'CODIGO IBGE': 'CD_MUN'}, inplace=True)
+        
+    df_filtrado_geometrias = pd.merge(brasil_municipios, df_filtrado, on='CD_MUN', how='inner')
+    df_filtrado_geometrias['CD_MUN'] = df_filtrado_geometrias['CD_MUN'].astype(object)
+        
+    ax = axes[i // 2, i % 2]  # Correção para acessar os subplots corretamente
+    brasil.plot(ax=ax, color='darkgray', edgecolor='black', alpha=0.8)
+        
+    vmin = df_filtrado_geometrias['CH4(g/s)'].min()
+    vmax = df_filtrado_geometrias['CH4(g/s)'].max()
+    norm = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
+        
+    df_filtrado_geometrias.plot(column='CH4(g/s)', cmap='jet', legend=True, ax=ax, alpha=1, norm=norm)
+        
+    ax.set_title(f'Emissão [g/s] de CH4 em {ANO}')
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    
+plt.tight_layout()
+plt.savefig(r"C:\Users\marcos perrude\Documents\LCQAR\imagens\quantificacao_glp")
+plt.show()
 
 
 
