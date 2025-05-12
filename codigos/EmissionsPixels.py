@@ -89,28 +89,31 @@ def cellTimeZone(xx,yy):
 
 
 def geoGrid2mat(emiGrid,gridMat4D,poluentes,uf,ltcGrid,DataPath):
-    
-    uf = 'SC'
     temporalFactor = pd.read_csv(DataPath + '\\fatdes.csv')
     
     #Localiza a desagregação temporal no csv de acordo com UF
     temporalFactorUF = temporalFactor[temporalFactor['UF']==uf]
-    
     # Loop para cara poluente
     for ii, pol in enumerate(poluentes):
-        pol = 'PM'
+        #pol = 'PM'
         gridMat = np.reshape(emiGrid[pol].fillna(0),
-                             (np.shape(np.unique(emiGrid.lon))[0],
-                              np.shape(np.unique(emiGrid.lat))[0])).transpose()
+                             (np.shape(gridMat4D)[2],
+                              np.shape(gridMat4D)[3]))
      # apara cad apoluente e mes, agrupar pelo fuso horário
-    for jj in range(0,12):
-        jj= 1
-        for ii, pol in enumerate (poluentes):
-            utcoffs = np.unique(ltcGrid)
-            for utcoff in utcoffs:
-                idx = ltcGrid==utcoff
-                gridMat4D[ii,jj,idx]=gridMat4D[ii,jj,idx]+ gridMat[idx]* np.roll(temporalFactorUF['Peso'],
-                                                                                     int(utcoff))[jj]
-                
+     # apara cad apoluente e mes, agrupar pelo fuso horário
+        for jj in range(0,12):
+            gridMat4D[ii,jj,:] =gridMat4D[ii,jj,:,:]  + gridMat*temporalFactorUF['Peso'].reset_index().iloc[jj].Peso
+            # gridMat4D[ii,jj,idx]=gridMat4D[ii,jj,idx]+ gridMat[idx]* np.roll(temporalFactorUF['Peso'],
+            #                                                                          int(utcoff))[jj]
+        # for jj in range(0,12):
+        #     jj=0
+        #     utcoffs = np.unique(ltcGrid)
+        #     for utcoff in utcoffs:
+        #         utcoff = utcoffs[0]
+        #         idx = ltcGrid==utcoff
+        #         gridMat4D[ii,jj,idx] =gridMat4D[ii,jj,idx]  + gridMat[idx]*temporalFactorUF['Peso'].iloc[jj]
+        #         # gridMat4D[ii,jj,idx]=gridMat4D[ii,jj,idx]+ gridMat[idx]* np.roll(temporalFactorUF['Peso'],
+        #         #                                                                          int(utcoff))[jj]
+    #A = gridMat4D[0,0,:,:]              
     return gridMat4D
 
