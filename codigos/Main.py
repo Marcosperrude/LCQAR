@@ -65,7 +65,7 @@ for ii, uf in enumerate(ufs):
     
     # transforma em matriz e soma as emissões de cada estado
     gridMat4D = geoGrid2mat(emiGrid,gridMat4D,poluentes,uf,ltcGrid,DataPath)
-
+ 
 a = gridMat4D[0,0,:,:]
 # soma_emiGrid = emiGrid['PM'].sum(skipna=True)
 # soma_gridMat4D = gridMat4D[0,:,:,:].sum()  # soma em todos os meses e pixels
@@ -85,8 +85,28 @@ for i, nome in enumerate(poluentes):
 # Criar o Dataset
 ds = xr.Dataset(data_vars)
  
-# fig, ax= plt.subplots(figsize=(10, 8))
-# ds["PM"].sel(tempo=0).plot(ax=ax)
-# br_uf.boundary.plot(ax=ax)
+fig, ax= plt.subplots(figsize=(10, 8))
+ds["PM"].sel(tempo=0).plot(ax=ax)
+br_uf.boundary.plot(ax=ax)
+#%%
+
+fig,ax = plt.subplots(3)
+
+pm = ds['PM'][:,:,:]
+# Para o tempo - time = 0 em y = 30
+ax[0].plot(ds['lon'][:],pm[0,30,:])
+print(ds['lat'][30])
+
+# Para o tempo - time = 0 em x = 200
+ax[1].plot(ds['lat'][:],pm[0,:,50])
+print(ds['lon'][50])
+
+
+# Para todo o tempo em um ponto específico
+ax[2].plot(ds['tempo'][:],pm[:,20,50])
+
+
+
+
 
 
