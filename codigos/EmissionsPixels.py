@@ -97,8 +97,8 @@ def geoGrid2mat(emiGrid,gridMat4D,poluentes,uf,ltcGrid,DataPath):
     for ii, pol in enumerate(poluentes):
         #pol = 'PM'
         gridMat = np.reshape(emiGrid[pol].fillna(0),
-                             (np.shape(gridMat4D)[2],
-                              np.shape(gridMat4D)[3]))
+                             (np.shape(np.unique(emiGrid.lon))[0],
+                              np.shape(np.unique(emiGrid.lat))[0])).transpose()
      # apara cad apoluente e mes, agrupar pelo fuso horário
      # apara cad apoluente e mes, agrupar pelo fuso horário
         for jj in range(0,12):
