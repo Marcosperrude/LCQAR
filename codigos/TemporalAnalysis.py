@@ -15,6 +15,13 @@ DataDir = r"C:\Users\marcos perrude\Documents\LCQAR"
 DataPath = os.path.join(DataDir,'Inputs')
 OutPath = os.path.join(DataDir, 'Outputs')
 
+#%% Análise Anual
+
+
+
+
+#%%
+#Ànalise mensal
 df = pd.read_csv(DataPath + '\GLP_Vendas_Historico.csv', encoding='latin1')
 
 glp = df[
