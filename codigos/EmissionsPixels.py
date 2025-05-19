@@ -7,17 +7,17 @@ Created on Wed Apr 30 14:24:15 2025
 
 import pandas as pd
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import numpy as np
 import os
-from shapely.geometry import box
 from timezonefinder import TimezoneFinder
+from emissionsGrid import EmssionsGrid
 
-def EmissionsPixels(Tam_pixel, Combustivel, woodEmission, coalEmission, 
-                       totalEmission, gridGerado, DataPath, OutPath, uf, br_uf):
-    # Diretórios de dados
-    poluentes = ['PM', 'PM10', 'NOx', 'SO2', 'CO']
-    setores = os.path.join(DataPath, 'Setores')
+
+#
+def EmissionsPixelsWoodCoal(Tam_pixel, Combustivel, woodEmission, coalEmission, 
+                       totalEmission, gridGerado, DataPath, OutPath, uf, br_uf, 
+                       poluentesWoodCoal, setores):
+
 
     # Padroniza CD_SETOR
     for df in [woodEmission, coalEmission, totalEmission]:
@@ -35,6 +35,7 @@ def EmissionsPixels(Tam_pixel, Combustivel, woodEmission, coalEmission,
     shp_file = [f for f in os.listdir(shapefile_path) if f.endswith(".shp")][0]
     gdf_uf = gpd.read_file(os.path.join(shapefile_path, shp_file))
     gdf_uf['CD_SETOR'] = gdf_uf['CD_SETOR'].astype(str)
+    
     if Combustivel == "Lenha":
         emissoes_uf = pd.merge(woodEmission, gdf_uf[['CD_SETOR', 'geometry']], on='CD_SETOR', how='right')
     elif Combustivel == "Carvao":
@@ -48,23 +49,31 @@ def EmissionsPixels(Tam_pixel, Combustivel, woodEmission, coalEmission,
     emissoes = gpd.GeoDataFrame(pd.concat(setores_brasil, ignore_index=True), crs=br_uf.crs)
         # Calcula emissões por célula
         
-    emiGrid = gridGerado.copy()
-    for pol in poluentes:
-        print(f"Calculando {pol}...")
-        valores = []
-        for cell in gridGerado.geometry:
-            setores_intersectados = emissoes[emissoes.intersects(cell)].copy()
-            if setores_intersectados.empty:
-                valores.append(np.nan)
-                continue
-            setores_intersectados["area_total"] = setores_intersectados.geometry.area
-            setores_intersectados["area_intersectada"] = setores_intersectados.geometry.intersection(cell).area
-            setores_intersectados["peso"] = setores_intersectados["area_intersectada"] / setores_intersectados["area_total"]
-            valor = (setores_intersectados[pol] * setores_intersectados["peso"]).sum()
-            valores.append(valor)  
+    emiGrid = EmssionsGrid(emissoes, gridGerado, poluentesWoodCoal)
 
-        emiGrid[pol] = valores
-        
+    return emiGrid
+
+
+#Gerar Grid de emissoes de GLP
+def EmissionsPixelsGLP (combDf ,br_mun, gridGerado):
+    br_mun['CD_MUN'] = br_mun['CD_MUN'].astype(int)#Shape com geometria
+    combDf['CODIGO IBGE'] = combDf['CODIGO IBGE'].astype(int)
+    combDf.rename(columns={'CODIGO IBGE': 'CD_MUN'}, inplace = True)
+    
+    geoCombDf = pd.merge(
+        combDf,
+        br_mun[['CD_MUN', 'geometry']],
+        on='CD_MUN',
+        how='left'  # left para manter todos de combDt, mesmo sem geometria
+    )
+    
+    geoCombDf['CD_MUN'] = geoCombDf['CD_MUN'].astype(object)
+    geoCombDf = gpd.GeoDataFrame(geoCombDf, geometry='geometry')
+
+    poluentes = ['PM', 'SO2', 'Nox', 'N2O', 'CO2', 'CO', 'CH4']
+    
+    emiGrid = EmssionsGrid(geoCombDf, gridGerado, poluentes)
+
     return emiGrid
 
 def cellTimeZone(xx,yy):
@@ -95,16 +104,18 @@ def geoGrid2mat(emiGrid,gridMat4D,poluentes,uf,ltcGrid,DataPath):
     temporalFactorUF = temporalFactor[temporalFactor['UF']==uf]
     # Loop para cara poluente
     for ii, pol in enumerate(poluentes):
-        #pol = 'PM'
         gridMat = np.reshape(emiGrid[pol].fillna(0),
                              (np.shape(np.unique(emiGrid.lon))[0],
                               np.shape(np.unique(emiGrid.lat))[0])).transpose()
      # apara cad apoluente e mes, agrupar pelo fuso horário
      # apara cad apoluente e mes, agrupar pelo fuso horário
-        for jj in range(0,12):
-            gridMat4D[ii,jj,:] =gridMat4D[ii,jj,:,:]  + gridMat*temporalFactorUF['Peso'].reset_index().iloc[jj].Peso
+        # for jj in range(0,12):
+        #     gridMat4D[ii, jj, :, :] == gridMat4D[ii, jj, :, :] + gridMat * pesos[jj]
+            #gridMat4D[ii,jj,:] =gridMat4D[ii,jj,:,:]  + gridMat*temporalFactorUF['Peso'].reset_index().iloc[jj].Peso
             # gridMat4D[ii,jj,idx]=gridMat4D[ii,jj,idx]+ gridMat[idx]* np.roll(temporalFactorUF['Peso'],
             #                                                                          int(utcoff))[jj]
+        for jj in range(12):
+            gridMat4D[ii,jj,:] =gridMat4D[ii,jj,:,:]  + gridMat*temporalFactorUF['Peso'].reset_index().iloc[jj].Peso 
         # for jj in range(0,12):
         #     jj=0
         #     utcoffs = np.unique(ltcGrid)
