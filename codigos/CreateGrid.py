@@ -9,7 +9,6 @@ import geopandas as gpd
 import numpy as np
 from shapely.geometry import box
 
-
 def CreateGrid(Tam_pixel,minx,maxx,miny,maxy):
     
     x_coords = np.arange(minx, maxx, Tam_pixel)
