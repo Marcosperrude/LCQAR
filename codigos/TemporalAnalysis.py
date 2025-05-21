@@ -15,13 +15,8 @@ DataDir = r"C:\Users\marcos perrude\Documents\LCQAR"
 DataPath = os.path.join(DataDir,'Inputs')
 OutPath = os.path.join(DataDir, 'Outputs')
 
-#%% Análise Anual
 
-
-
-
-#%%
-#Ànalise mensal
+#%% Ànalise mensal
 df = pd.read_csv(DataPath + '\GLP_Vendas_Historico.csv', encoding='latin1')
 
 glp = df[
@@ -50,12 +45,18 @@ uf_codigos = {
 fatdes['CD_UF'] = fatdes["UF Destino"].map(uf_codigos)
 fatdes.to_csv(os.path.join(DataPath, 'fatdes.csv'), index = False)
 
-#%%
+#%% Análise Anual
+
+#consumo em tep
+df= pd.read_csv(DataPath + '\\EPE_Consumo_Historico.csv',index_col = [0],  encoding='latin1', )
+df= df.replace(',', '', regex=True).astype(float)
 
 
+df2023 = df["2023"]
 
+fatdesEPE = df.div(df['2023'], axis=0)
 
-
+fatdesEPE.to_csv(os.path.join(OutPath, 'fatdesEPE.csv'), index = True)
 
 
 
