@@ -14,28 +14,58 @@ Created on Mon May 19 10:24:58 2025
 @author: Marcos Henrique Perrude
 """
 
-import numpy as np
+import geopandas as gpd
 
 def EmssionsGrid(geo_df, gridGerado, poluentes):
-
     emiGrid = gridGerado.copy()
+    
+    intersec = gpd.sjoin(geo_df, gridGerado, how='inner', predicate='intersects')
+    
+    intersec = intersec.merge(
+        gridGerado[['geometry']],
+        left_on='index_right', right_index=True, suffixes=('', '_right')
+    )
+    
+    intersec_area = intersec.geometry.intersection(intersec['geometry_right']).area
+    peso = intersec_area / intersec.geometry.area
+
     for pol in poluentes:
-        print(f"Calculando {pol}...")
-        valores = []
+        # Calcula o valor ponderado de emissões diretamente
+        ponderado = intersec[pol] * peso
+        soma_ponderada = ponderado.groupby(intersec["index_right"]).sum()
+        emiGrid.loc[soma_ponderada.index, pol] = soma_ponderada.values
 
-        for cell in gridGerado.geometry:
-            intersec = geo_df[geo_df.intersects(cell)].copy()
+    return emiGrid   
+#%% Verificando se está gerando certo
+# import matplotlib.pyplot as plt
 
-            if intersec.empty:
-                valores.append(np.nan)
-                continue
+# index_cell = 10
 
-            intersec["area_total"] = intersec.geometry.area
-            intersec["area_intersectada"] = intersec.geometry.intersection(cell).area
-            intersec["peso"] = intersec["area_intersectada"] / intersec["area_total"]
-            valor_ponderado = (intersec[pol] * intersec["peso"]).sum()
-            valores.append(valor_ponderado)
+# fig, ax = plt.subplots(figsize=(8, 8))
 
-        emiGrid[pol] = valores
+# # Plota o grid inteiro como referência (em cinza claro)
+# gridGerado.boundary.plot(ax=ax, color='lightgrey', linewidth=0.5)
 
-    return emiGrid
+# # Plota os setores originais
+# geo_df.boundary.plot(ax=ax, color='black', linewidth=0.5, alpha=0.3)
+
+# # Plota a célula do grid selecionada em vermelho
+# gpd.GeoSeries(gridGerado.loc[index_cell, 'geometry']).boundary.plot(
+#     ax=ax, color='red', linewidth=2, label='Célula do Grid'
+# )
+
+# # Plota os setores que intersectaram com essa célula em azul
+# intersec[intersec['index_right'] == index_cell].geometry.boundary.plot(
+#     ax=ax, color='blue', linewidth=1, label='Setores Intersectados'
+# )
+
+# plt.title(f'Interseção da Célula {index_cell} com Setores')
+# plt.xlabel('Longitude')
+# plt.ylabel('Latitude')
+
+# plt.legend(['Grid', 'Setores', 'Célula do Grid', 'Setores Intersectados'])
+# plt.show()
+
+
+
+
