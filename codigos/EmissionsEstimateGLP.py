@@ -28,8 +28,8 @@ def emissionEstimateGLP (DataPath , OutPath, glpDf ):
     #https://www.epa.gov/sites/default/files/2020-09/documents/1.5_liquefied_petroleum_gas_combustion.pdf
     emiFac  = pd.read_csv(DataPath + '\\fatorEmissao_Prop_But.csv' , index_col=[0])
     
-    #Conversao lb/ton --> Kg/m³
-    emiFac  = emiFac * 0.12
+    #Conversao lb/ton --> Kg/m³ -->Ton/m³
+    emiFac  = emiFac * 0.12/1000
     
     emiCidDict = {}
     # Loop pelos combustíveis disponíveis em emiFac (assume que o índice são os nomes)
