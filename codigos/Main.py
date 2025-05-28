@@ -9,10 +9,11 @@ import geopandas as gpd
 import numpy as np
 from EmissionsEstimateWoodCoal import emissionEstimateWoodCoal
 import os
-from EmissionsPixels import EmissionsPixelsWoodCoal,geoGrid4mat,geoGrid5mat, cellTimeZone , EmissionsPixelsGLP
+from EmissionsPixels import EmissionsPixelsWoodCoal,GridMat5D, cellTimeZone , EmissionsPixelsGLP , GridMat5glp
 from CreateGrid import CreateGrid
 import matplotlib.pyplot as plt
 import xarray as xr
+from temporalDisagg import temporalDisagg
 
 #Pasta do repositório
 DataDir = r"C:\Users\marcos perrude\Documents\LCQAR"
@@ -32,9 +33,6 @@ setores = os.path.join(DataPath, 'Setores')
 # Estimando as emissões para lenha e carvao por setor
 #Dados : https://www.ibge.gov.br/estatisticas/sociais/trabalho/22827-censo-demografico-2022.html?edicao=41851&t=downloads
 #malha com atributos - setores - csv
-WoodCoalDf = pd.read_csv(DataPath + '\BR_setores_CD2022.csv')
-woodEmission, coalEmission, poluentesWoodCoal = emissionEstimateWoodCoal(
-    WoodCoalDf,DataPath,OutPath)
 
 #%% Definindo o grid
 # Definições da grade
@@ -50,7 +48,19 @@ gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
 # gridGerado.boundary.plot(ax=ax, color='gray')
 # br_uf.boundary.plot(ax=ax, color='black')
 
+estados_intersectados = br_uf[br_uf.intersects(gridGerado.unary_union)].copy()
+ufs = list(estados_intersectados['SIGLA_UF'])
+
 #%% Xarray de emissoes Lenha e Carvão
+ 
+
+
+#Calcular as emissões de lenha e carvão
+WoodCoalDf = pd.read_csv(DataPath + '\BR_setores_CD2022.csv')
+woodEmission, coalEmission, poluentesWoodCoal = emissionEstimateWoodCoal(
+    WoodCoalDf,DataPath,OutPath)
+
+
 # Estados
 estados_intersectados = br_uf[br_uf.intersects(gridGerado.unary_union)].copy()
 ufs = list(estados_intersectados['SIGLA_UF'])
@@ -61,13 +71,12 @@ ufs = list(estados_intersectados['SIGLA_UF'])
 ltcGrid = cellTimeZone(xx,yy)
 
 datasets = {}
+
 for Combustivel in ('Lenha','Carvao'):
     for ii, uf in enumerate(ufs):
         if ii == 0:
             # Transformando em uma matriz x por y
-            gridMat4D = np.zeros((len(poluentesWoodCoal),54, np.shape(np.unique(gridGerado.lat))[0],
-                                  np.shape(np.unique(gridGerado.lon))[0]))
-            
+
             gridMat5D = np.zeros((len(poluentesWoodCoal),54, 12, np.shape(np.unique(gridGerado.lat))[0],
                                   np.shape(np.unique(gridGerado.lon))[0]))
         
@@ -78,34 +87,14 @@ for Combustivel in ('Lenha','Carvao'):
     
         
         # transforma em matriz e soma as emissões de cada estado
-        gridMat4D = geoGrid4mat(Combustivel, emiGrid,gridMat4D,poluentesWoodCoal,DataPath)
-        
-        gridMat5D = geoGrid5mat(gridMat4D, gridMat5D, poluentesWoodCoal, uf, ltcGrid, DataPath)
+        gridMat5D = GridMat5D(Combustivel, emiGrid, gridMat5D, poluentesWoodCoal, 
+                              DataPath, uf, ltcGrid)
+
 
     
-    gridMat4Dtemp = gridMat5D.reshape(gridMat5D.shape[0], 
-                                  gridMat5D.shape[1] * gridMat5D.shape[2], 
-                                  gridMat5D.shape[3],
-                                  gridMat5D.shape[4])
-    
-    data_vars = {}
-    for i, nome in enumerate(poluentesWoodCoal):
-        data_vars[nome] = xr.DataArray(
-            gridMat4Dtemp[i,:,:,:],  # shape: (pol, time, lat, lon)
-            dims=["time", "lat", "lon"],
-            coords={
-                "time": pd.date_range(start=f"{1970}-01",
-                                       periods=gridMat5D.shape[1] * gridMat5D.shape[2],
-                                       freq="MS"),
-                "lat": yy[:,0],
-                "lon": xx[0,:]
-                }
-        )
-    
-    # Criar o Dataset
-    ds = xr.Dataset(data_vars)
-    ds.attrs['description'] = f"Emissões residenciais de {Combustivel}"
+    ds = temporalDisagg(gridMat5D, poluentesWoodCoal, Combustivel, xx, yy)
     datasets[Combustivel] = ds
+    
     
 emiCoal = datasets['Carvao'].copy()
 emiWood = datasets['Lenha'].copy()
@@ -116,7 +105,7 @@ emiWood = datasets['Lenha'].copy()
 
 # for var in emiCoal.data_vars:
 #     # Soma total de emissões por ano (tempo, lat, lon somados)
-#     total_anual = emiCoal[var].groupby("tempo.year").sum(dim=["tempo", "lat", "lon"])
+#     total_anual = emiCoal[var].groupby("time.year").sum(dim=["time", "lat", "lon"])
 
 #     # Valor total para o ano de 2023
 #     valor_2023 = total_anual.sel(year=2023)
@@ -127,6 +116,7 @@ emiWood = datasets['Lenha'].copy()
 # #Tem que bater com o csv dos pesos anuais
 # print(pesos["CO"])
 
+
 #%%
 from EmissionsEstimateGLP import emissionEstimateGLP 
 
@@ -136,30 +126,51 @@ glpDf = glpDf[glpDf['ANO'] >= 2000]
 propEmiCid, butEmiCid, poluentesGLP = emissionEstimateGLP(DataPath, OutPath, glpDf)
 
 
-for ii, combustivel in enumerate(propEmiCid, butEmiCid):
+
+#Loop para todos os combustíveis
+
+datasetsglp = {}
+
+
+for ii, Combustivel in enumerate([propEmiCid, butEmiCid]):
     
-    gridMatGLP4D = np.zeros((len(poluentesGLP),len(glpDf['ANO'].unique()), np.shape(np.unique(gridGerado.lat))[0],
-                          np.shape(np.unique(gridGerado.lon))[0]))
+    gridMat5Dglp = np.zeros((len(poluentesGLP),len(glpDf['ANO'].unique()),12,
+                             np.shape(np.unique(gridGerado.lat))[0],
+                             np.shape(np.unique(gridGerado.lon))[0]))
+
+    # Loop pelos estados intersectados
+    for uf in ufs:
+        print(f"Processando UF {uf}")
+
+        # Para cada ano dentro do dataframe glpDf
+        for jj, ano in enumerate(glpDf['ANO'].unique()):
+
+            # Filtra emissões para o combustível, ano e estado (municípios dentro do estado)
+            emiGridGLP = EmissionsPixelsGLP(
+                Combustivel[(Combustivel['ANO'] == ano) & (Combustivel['UF'] == uf)],
+                br_mun, gridGerado, poluentesGLP
+            )
+
+            # 6. Atualiza a matriz 5D desagregando mensalmente
+            gridMat5Dglp = GridMat5glp(Combustivel, emiGridGLP,gridMat5Dglp, poluentesGLP, DataPath,
+                                         ltcGrid,uf)
     
-    for jj, ano in enumerate(glpDf['ANO'].unique()):
-        print(f"Processando {ano}...")
-        emiGridGLP = EmissionsPixelsGLP(propEmiCid[propEmiCid['ANO'] == 2022], br_mun,
-                                        gridGerado, poluentesGLP)
+    #Tranformar em dataset
+    
+    if ii == 0:
+       Nome = 'Propano'
+    else:
+       Nome = 'Butano'
+    
+    ds = temporalDisagg(gridMat5Dglp, poluentesGLP, Nome, xx, yy)
+    datasetsglp[Nome] = ds
+
+emiPro = datasetsglp['Propano'].copy()
+emiBut = datasetsglp['Butano'].copy()
+
+emiPro['time']   
         
-        
-        for ii, pol in enumerate(poluentesGLP):
-            print(f"Processando {pol}...")
-            gridMatGLP = np.reshape(emiGridGLP[pol].fillna(0),
-                                 (np.shape(np.unique(emiGridGLP.lon))[0],
-                                  np.shape(np.unique(emiGridGLP.lat))[0])).transpose()
             
-            gridMatGLP4D[ii,jj,:,:] += gridMatGLP
-
-
-
-
-
-
 
 # gridMat4D = np.zeros((len(poluentesWoodCoal),12, np.shape(np.unique(gridGerado.lat))[0],
 #                       np.shape(np.unique(gridGerado.lon))[0]))
