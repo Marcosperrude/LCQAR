@@ -10,7 +10,6 @@ import pandas as pd
 
 
 def temporalDisagg(gridMat5D, poluentes, Combustivel, xx, yy):
-
     # Reshape para 4D: (poluentes, tempo, lat, lon)
     gridMat4Dtemp = gridMat5D.reshape(
         gridMat5D.shape[0], 
@@ -28,12 +27,12 @@ def temporalDisagg(gridMat5D, poluentes, Combustivel, xx, yy):
     
     for i, nome in enumerate(poluentes):
         data_vars[nome] = xr.DataArray(
-            gridMat4Dtemp[i, :, :, :],  # shape: (time, lat, lon)
+            gridMat4Dtemp[i,:, :, :],  # shape: (time, lat, lon)
             dims=["time", "lat", "lon"],
             coords={
                 "time": pd.date_range(
                     start= inicio,
-                    periods=gridMat5D.shape[1] * gridMat5D.shape[2],
+                    periods=gridMat4Dtemp.shape[1],
                     freq="MS"
                 ),
                 "lat": yy[:, 0],
