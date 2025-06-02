@@ -17,6 +17,8 @@ Created on Mon May 19 10:24:58 2025
 import geopandas as gpd
 
 def EmssionsGrid(geo_df, gridGerado, poluentes):
+    
+
     emiGrid = gridGerado.copy()
     
     intersec = gpd.sjoin(geo_df, gridGerado, how='inner', predicate='intersects')
