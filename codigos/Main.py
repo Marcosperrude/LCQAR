@@ -9,11 +9,13 @@ import geopandas as gpd
 import numpy as np
 from EmissionsEstimateWoodCoal import emissionEstimateWoodCoal
 import os
-from EmissionsPixels import EmissionsPixelsWoodCoal,GridMat5D, cellTimeZone , EmissionsPixelsGLP , GridMat5glp
+from EmissionsPixels import EmissionsPixelsWoodCoal,GridMat5D, cellTimeZone , EmissionsPixelsGLP 
 from CreateGrid import CreateGrid
 import matplotlib.pyplot as plt
 import xarray as xr
 from temporalDisagg import temporalDisagg
+from EmissionsEstimateGLP import emissionEstimateGLP 
+
 
 #Pasta do repositório
 DataDir = r"C:\Users\marcos perrude\Documents\LCQAR"
@@ -28,15 +30,16 @@ br_uf = gpd.read_file(os.path.join(DataPath, 'BR_UF_2023', 'BR_UF_2023.shp'))
 
 br_mun = gpd.read_file(DataPath + '\BR_Municipios_2022\BR_Municipios_2022.dbf')
 
+#Fonte dos dados : https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/26565-malhas-de-setores-censitarios-divisoes-intramunicipais.html?edicao=41826&t=downloads
 setores = os.path.join(DataPath, 'Setores')
 
 # Estimando as emissões para lenha e carvao por setor
-#Dados : https://www.ibge.gov.br/estatisticas/sociais/trabalho/22827-censo-demografico-2022.html?edicao=41851&t=downloads
+
 #malha com atributos - setores - csv
 
 #%% Definindo o grid
 # Definições da grade
-Tam_pixel = 1  # 0.1 Equivale a ~1km se o CRS for metros
+Tam_pixel = 0.1 # 0.1 Equivale a ~1km se o CRS for metros
 minx = -53.90  # longitude mínima de SC (oeste)
 maxx = -48.30  # longitude máxima de SC (leste)
 miny = -29.35  # latitude mínima de SC (sul)
@@ -53,24 +56,24 @@ ufs = list(estados_intersectados['SIGLA_UF'])
 
 #%% Xarray de emissoes Lenha e Carvão
  
-
+import dask.array as da
 
 #Calcular as emissões de lenha e carvão
+
+#Fonte dos dados : https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/Agregados_por_Setores_Censitarios/malha_com_atributos/setores/csv/
 WoodCoalDf = pd.read_csv(DataPath + '\BR_setores_CD2022.csv')
 woodEmission, coalEmission, poluentesWoodCoal = emissionEstimateWoodCoal(
     WoodCoalDf,DataPath,OutPath)
 
 
-# Estados
-estados_intersectados = br_uf[br_uf.intersects(gridGerado.unary_union)].copy()
-ufs = list(estados_intersectados['SIGLA_UF'])
 
 # fig,ax = plt.subplots()
 # estados_intersectados.boundary.plot(ax=ax)
 # gridGerado.boundary.plot(ax=ax)
-ltcGrid = cellTimeZone(xx,yy)
+# ltcGrid = cellTimeZone(xx,yy)
 
 datasets = {}
+
 
 for Combustivel in ('Lenha','Carvao'):
     for ii, uf in enumerate(ufs):
@@ -78,18 +81,17 @@ for Combustivel in ('Lenha','Carvao'):
             # Transformando em uma matriz x por y
 
             gridMat5D = np.zeros((len(poluentesWoodCoal),54, 12, np.shape(np.unique(gridGerado.lat))[0],
-                                  np.shape(np.unique(gridGerado.lon))[0]))
+                                  np.shape(np.unique(gridGerado.lon))[0]),
+                                 )
         
         # Colocando emissões de cada estado na grade
         emiGrid = EmissionsPixelsWoodCoal(Tam_pixel, Combustivel, woodEmission, coalEmission 
                                , gridGerado, DataPath, OutPath,uf, br_uf ,
                                poluentesWoodCoal, setores)
     
-        
         # transforma em matriz e soma as emissões de cada estado
         gridMat5D = GridMat5D(Combustivel, emiGrid, gridMat5D, poluentesWoodCoal, 
-                              DataPath, uf, ltcGrid)
-
+                              DataPath, uf)
 
     
     ds = temporalDisagg(gridMat5D, poluentesWoodCoal, Combustivel, xx, yy)
@@ -98,6 +100,60 @@ for Combustivel in ('Lenha','Carvao'):
     
 emiCoal = datasets['Carvao'].copy()
 emiWood = datasets['Lenha'].copy()
+
+#%%
+
+# co = emiPro['CO']
+
+# fig, ax = plt.subplots()
+# ax.pcolor(co['lon'][:], co['lat'], np.mean(co, axis=0))  #Média 
+# br_uf.boundary.plot(ax=ax)
+#%%
+
+#ordenadas de Joinville
+# lat_joinville = -26.3045
+# lon_joinville = -48.8487
+# co = emiPro['CO']
+# # Encontrar índices mais próximos
+# lat_idx = np.abs(co['lat'].values - lat_joinville).argmin()
+# lon_idx = np.abs(co['lon'].values - lon_joinville).argmin()
+
+# print(f"Índice Latitude: {lat_idx}, valor real: {co['lat'].values[lat_idx]}")
+# print(f"Índice Longitude: {lon_idx}, valor real: {co['lon'].values[lon_idx]}")
+
+# co_series = co[:, lat_idx, lon_idx]
+
+# # Plot
+# plt.figure(figsize=(12, 5))
+# plt.plot(co['time'].values, co_series.values, marker='o', linestyle='-')
+# plt.title('Série Temporal de CO no pixel de Joinville/SC')
+# plt.xlabel('Tempo')
+# plt.ylabel('Emissão de CO')
+# plt.grid()
+# plt.show()
+
+# import pandas as pd
+
+# # Converter coordenada temporal
+# time = pd.to_datetime(co['time'].values)
+
+# # Criar DataFrame
+# df = pd.DataFrame({
+#     'time': time,
+#     'co': co_series.values
+# })
+
+# # Agrupar por ano e somar ignorando NaNs
+# soma_anual = df.groupby(df['time'].dt.year)['co'].sum(min_count=1)  # min_count evita soma de tudo NaN ser 0
+
+# soma_anual.plot(marker='o')
+# plt.xlabel('Ano')
+# plt.ylabel('Emissão total de CO')
+# plt.title('Soma anual de emissões de CO no pixel de Joinville')
+# plt.grid()
+# plt.show()
+
+
 #%% Verificando se esta certo
 
 
@@ -105,7 +161,7 @@ emiWood = datasets['Lenha'].copy()
 
 # for var in emiCoal.data_vars:
 #     # Soma total de emissões por ano (tempo, lat, lon somados)
-#     total_anual = emiCoal[var].groupby("time.year").sum(dim=["time", "lat", "lon"])
+#     total_anual = emiWood[var].groupby("time.year").sum(dim=["time", "lat", "lon"])
 
 #     # Valor total para o ano de 2023
 #     valor_2023 = total_anual.sel(year=2023)
@@ -117,8 +173,7 @@ emiWood = datasets['Lenha'].copy()
 # print(pesos["CO"])
 
 
-#%%
-from EmissionsEstimateGLP import emissionEstimateGLP 
+#%%ANALISAR!!!!!!!
 
 #Fonte dos dados: https://dados.gov.br/dados/conjuntos-dados/vendas-de-derivados-de-petroleo-e-biocombustiveis
 glpDf = pd.read_csv(DataPath + '\\vendas-anuais-de-glp-por-municipio.csv',encoding ='utf-8')
@@ -126,14 +181,13 @@ glpDf = glpDf[glpDf['ANO'] >= 2000]
 propEmiCid, butEmiCid, poluentesGLP = emissionEstimateGLP(DataPath, OutPath, glpDf)
 
 
-
 #Loop para todos os combustíveis
 
 datasetsglp = {}
 
 
-for ii, Combustivel in enumerate([propEmiCid, butEmiCid]):
-    
+for Combustivel, dt in zip(['Propano', 'Butano'], [propEmiCid, butEmiCid]):
+
     gridMat5Dglp = np.zeros((len(poluentesGLP),len(glpDf['ANO'].unique()),12,
                              np.shape(np.unique(gridGerado.lat))[0],
                              np.shape(np.unique(gridGerado.lon))[0]))
@@ -147,28 +201,22 @@ for ii, Combustivel in enumerate([propEmiCid, butEmiCid]):
 
             # Filtra emissões para o combustível, ano e estado (municípios dentro do estado)
             emiGridGLP = EmissionsPixelsGLP(
-                Combustivel[(Combustivel['ANO'] == ano) & (Combustivel['UF'] == uf)],
+                dt[(dt['ANO'] == ano) & (dt['UF'] == uf)],
                 br_mun, gridGerado, poluentesGLP
             )
 
             # 6. Atualiza a matriz 5D desagregando mensalmente
-            gridMat5Dglp = GridMat5glp(Combustivel, emiGridGLP,gridMat5Dglp, poluentesGLP, DataPath,
-                                         ltcGrid,uf)
-    
+            gridMat5Dglp = GridMat5D(Combustivel, emiGridGLP, gridMat5Dglp, poluentesGLP, DataPath,
+                                     uf)
+                        
     #Tranformar em dataset
-    
-    if ii == 0:
-       Nome = 'Propano'
-    else:
-       Nome = 'Butano'
-    
-    ds = temporalDisagg(gridMat5Dglp, poluentesGLP, Nome, xx, yy)
-    datasetsglp[Nome] = ds
+    ds = temporalDisagg(gridMat5Dglp, poluentesGLP, Combustivel, xx, yy)
+    datasetsglp[Combustivel] = ds
 
 emiPro = datasetsglp['Propano'].copy()
 emiBut = datasetsglp['Butano'].copy()
 
-emiPro['time']   
+
         
             
 
