@@ -16,6 +16,7 @@ def emissionEstimateWoodCoal(WoodCoalDf,DataPath,OutPath):
     WoodCoalDf = WoodCoalDf[WoodCoalDf["CD_SIT"] != 9]  # Remove massas de água
     WoodCoalDf = WoodCoalDf[WoodCoalDf['v0002'] != 0]  # Remove áreas com 0 domicílios
     
+    
     # Classificação de acordo com o tipo do setor censitário
     classificacao = pd.read_csv(DataPath + '\\classificacao.csv' , index_col='Codigo')
 
