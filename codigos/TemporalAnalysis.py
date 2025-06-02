@@ -58,8 +58,80 @@ fatdesEPE = df.div(df['2023'], axis=0)
 
 fatdesEPE.to_csv(os.path.join(OutPath, 'fatdesEPE.csv'), index = True)
 
+#%%
+
+import xarray as xr
+import geopandas as gpd
+import re 
+import os
+
+Cams = os.path.join(DataPath, 'CAMS')
+
+arquivos  = [f for f in os.listdir(Cams) if f.endswith(".nc")]
+ds = xr.open_dataset(os.path.join(Cams , arquivos[0]))
+
+br = gpd.read_file(r"C:\Users\marcos perrude\Documents\LCQAR\dados\BR_Pais_2022 (1)\BR_Pais_2022.shp")
+br = br.to_crs(epsg=4326)
+minx, miny, maxx, maxy = br.total_bounds
+ds_br = ds.sel(
+    latitude=slice(miny, maxy),
+    longitude=slice(minx, maxx)
+)
+
+import rioxarray
+from rioxarray.merge import merge_datasets
+
+# Primeiro, atribuir o CRS corretamente
+ds_br = ds_br.rio.write_crs("EPSG:4326")
+
+# Convertendo a geometria do Brasil para formato GeoJSON
+br_geom = br.geometry.values[0]  # Como é um shapefile do país inteiro, provavelmente só tem 1 polígono
+
+# Mascara com base no polígono
+masked = ds_br.rio.clip(
+                    [br_geom],
+                    crs="EPSG:4326",
+                    all_touched=True
+                )
+
+fig, ax = plt.subplots(figsize=(10, 8))
+masked.FD_res.isel(time=0).plot(ax=ax)
+br.boundary.plot(ax=ax, color='red', linewidth=1.5)
+
+lat_min = masked.latitude.min().item()
+lat_max = masked.latitude.max().item()
+lon_min = masked.longitude.min().item()
+lon_max = masked.longitude.max().item()
+
+print(f"Latitude min: {lat_min}, max: {lat_max}")
+print(f"Longitude min: {lon_min}, max: {lon_max}")
 
 
+lat_joi = -26.304
+lon_joi = -48.848
+
+# Selecionar o pixel mais próximo
+fd_joinville = masked.FD_res.sel(
+    latitude=lat_joi,
+    longitude=lon_joi,
+    method='nearest'
+)
 
 
+fd_joinville.plot(marker='o')
+plt.title("Série Histórica do Fator de Desagregação - Joinville (2011)")
+plt.xlabel("Data")
+plt.ylabel("Fator de Desagregação")
+plt.grid(True)
+plt.show()
 
+# soma_fd = fd_joinville.sum().item()
+
+# # Número de dias
+# n_dias = fd_joinville.sizes['time']
+
+# # Média dos fatores diários
+# media_fd = soma_fd / n_dias
+
+# print(f"Soma total: {soma_fd:.6f}")
+# print(f"Média: {media_fd:.6f}")
