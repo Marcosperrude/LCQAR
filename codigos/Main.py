@@ -15,7 +15,9 @@ import matplotlib.pyplot as plt
 import xarray as xr
 from temporalDisagg import temporalDisagg
 from EmissionsEstimateGLP import emissionEstimateGLP 
-
+import dask
+from dask import delayed, compute
+from dask.diagnostics import ProgressBar
 
 #Pasta do repositório
 DataDir = r"C:\Users\marcos perrude\Documents\LCQAR"
@@ -40,10 +42,10 @@ setores = os.path.join(DataPath, 'Setores')
 #%% Definindo o grid
 # Definições da grade
 Tam_pixel = 0.1 # 0.1 Equivale a ~1km se o CRS for metros
-minx = -53.90  # longitude mínima de SC (oeste)
-maxx = -48.30  # longitude máxima de SC (leste)
-miny = -29.35  # latitude mínima de SC (sul)
-maxy = -26  # latitude máxima de SC (norte)
+minx = -53.0   # longitude mínima (oeste)
+maxx = -44.0   # longitude máxima (leste)
+miny = -25.5   # latitude mínima (sul)
+maxy = -19  # latitude máxima (norte)
 
 gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
 
@@ -74,63 +76,70 @@ woodEmission, coalEmission, poluentesWoodCoal = emissionEstimateWoodCoal(
 
 datasets = {}
 
-
 for Combustivel in ('Lenha','Carvao'):
+    Combustivel = 'Lenha'
+    # poluentes = poluentesWoodCoal
+    # combustivel = 'Lenha'
+    # uf= 'SC'
+    # ufs = ['SC']
     for ii, uf in enumerate(ufs):
-        if ii == 0:
-            # Transformando em uma matriz x por y
-
-            gridMat5D = np.zeros((len(poluentesWoodCoal),54, 12, np.shape(np.unique(gridGerado.lat))[0],
-                                  np.shape(np.unique(gridGerado.lon))[0]),
-                                 )
         
         # Colocando emissões de cada estado na grade
         emiGrid = EmissionsPixelsWoodCoal(Tam_pixel, Combustivel, woodEmission, coalEmission 
                                , gridGerado, DataPath, OutPath,uf, br_uf ,
                                poluentesWoodCoal, setores)
-    
-        # transforma em matriz e soma as emissões de cada estado
-        gridMat5D = GridMat5D(Combustivel, emiGrid, gridMat5D, poluentesWoodCoal, 
-                              DataPath, uf)
+        
+        # fig, ax = plt.subplots(figsize=(10, 8))
+        # emiGrid.plot(column = 'CO', ax=ax)
+        # br_uf.boundary.plot(ax=ax, color='red', linewidth=1.5)
+
+        ds = GridMat5D( Combustivel, emiGrid, poluentesWoodCoal,
+            DataPath, uf)
+
 
     
-    ds = temporalDisagg(gridMat5D, poluentesWoodCoal, Combustivel, xx, yy)
-    datasets[Combustivel] = ds
-    
+        if ii == 0:
+            dsAll = ds
+        else:
+            # Para os demais: soma as emissões por poluente
+            for pol in poluentesWoodCoal:
+                dsAll[pol] = dsAll[pol].fillna(0) + ds[pol].fillna(0)
+
+    datasets[Combustivel] = dsAll 
     
 emiCoal = datasets['Carvao'].copy()
 emiWood = datasets['Lenha'].copy()
 
 #%%
 
-# co = emiPro['CO']
+co = emiWood['PM']
 
-# fig, ax = plt.subplots()
-# ax.pcolor(co['lon'][:], co['lat'], np.mean(co, axis=0))  #Média 
-# br_uf.boundary.plot(ax=ax)
+fig, ax = plt.subplots()
+ax.pcolor(co['lon'][:], co['lat'], np.mean(co, axis=0))  #Média 
+br_uf.boundary.plot(ax=ax)
 #%%
 
 #ordenadas de Joinville
-# lat_joinville = -26.3045
-# lon_joinville = -48.8487
-# co = emiPro['CO']
-# # Encontrar índices mais próximos
-# lat_idx = np.abs(co['lat'].values - lat_joinville).argmin()
-# lon_idx = np.abs(co['lon'].values - lon_joinville).argmin()
+lat_joinville = -26.3045
+lon_joinville = -48.8487
+co = emiWood['CO']
+# Encontrar índices mais próximos
+lat_idx = np.abs(co['lat'].values - lat_joinville).argmin()
+lon_idx = np.abs(co['lon'].values - lon_joinville).argmin()
 
-# print(f"Índice Latitude: {lat_idx}, valor real: {co['lat'].values[lat_idx]}")
-# print(f"Índice Longitude: {lon_idx}, valor real: {co['lon'].values[lon_idx]}")
+print(f"Índice Latitude: {lat_idx}, valor real: {co['lat'].values[lat_idx]}")
+print(f"Índice Longitude: {lon_idx}, valor real: {co['lon'].values[lon_idx]}")
 
-# co_series = co[:, lat_idx, lon_idx]
+co_series = co[:, lat_idx, lon_idx]
 
-# # Plot
-# plt.figure(figsize=(12, 5))
-# plt.plot(co['time'].values, co_series.values, marker='o', linestyle='-')
-# plt.title('Série Temporal de CO no pixel de Joinville/SC')
-# plt.xlabel('Tempo')
-# plt.ylabel('Emissão de CO')
-# plt.grid()
-# plt.show()
+# Plot
+plt.figure(figsize=(12, 5))
+plt.plot(co['time'].values, co_series.values, marker='o', linestyle='-')
+plt.title('Série Temporal de CO no pixel de Joinville/SC')
+plt.xlabel('Tempo')
+plt.ylabel('Emissão de CO')
+plt.grid()
+plt.show()
 
 # import pandas as pd
 
