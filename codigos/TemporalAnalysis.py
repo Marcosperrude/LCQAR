@@ -64,11 +64,12 @@ import xarray as xr
 import geopandas as gpd
 import re 
 import os
-
+import rioxarray
+from os import listdir
 Cams = os.path.join(DataPath, 'CAMS')
 
-arquivos  = [f for f in os.listdir(Cams) if f.endswith(".nc")]
-ds = xr.open_dataset(os.path.join(Cams , arquivos[0]))
+arquivos = [os.path.join(Cams, f) for f in listdir(Cams) if f.endswith('.nc')]
+ds = xr.open_mfdataset(arquivos, combine='by_coords')
 
 br = gpd.read_file(r"C:\Users\marcos perrude\Documents\LCQAR\dados\BR_Pais_2022 (1)\BR_Pais_2022.shp")
 br = br.to_crs(epsg=4326)
@@ -78,30 +79,61 @@ ds_br = ds.sel(
     longitude=slice(minx, maxx)
 )
 
-import rioxarray
-from rioxarray.merge import merge_datasets
-
 # Primeiro, atribuir o CRS corretamente
 ds_br = ds_br.rio.write_crs("EPSG:4326")
 
-# Convertendo a geometria do Brasil para formato GeoJSON
-br_geom = br.geometry.values[0]  # Como é um shapefile do país inteiro, provavelmente só tem 1 polígono
-
 # Mascara com base no polígono
 masked = ds_br.rio.clip(
-                    [br_geom],
+                    br.geometry,
                     crs="EPSG:4326",
                     all_touched=True
                 )
 
-fig, ax = plt.subplots(figsize=(10, 8))
-masked.FD_res.isel(time=0).plot(ax=ax)
-br.boundary.plot(ax=ax, color='red', linewidth=1.5)
+miny = masked.latitude.min().item()
+maxy = masked.latitude.max().item()
+minx = masked.longitude.min().item()
+maxx = masked.longitude.max().item()
 
-lat_min = masked.latitude.min().item()
-lat_max = masked.latitude.max().item()
-lon_min = masked.longitude.min().item()
-lon_max = masked.longitude.max().item()
+
+
+# fig, ax = plt.subplots(figsize=(10, 8))
+# masked.plot(ax=ax)
+# br.boundary.plot(ax=ax, color='red', linewidth=1.5)
+
+#%%
+FD_res = masked['FD_res']
+FH_res_others = masked['FH_res_others']
+FH_res_pm10_pm25 = masked['FH_res_pm10_pm25']
+
+FD_res_mean = FD_res.resample(time='D').mean(dim=['latitude', 'longitude'])  # (latitude, longitude)
+FH_res_others_mean = FH_res_others.mean(dim=['latitude', 'longitude'])  # (latitude, longitude)
+FH_res_pm10_pm25_mean = FH_res_pm10_pm25.mean(dim=['latitude', 'longitude'])  # (latitude, longitude)
+
+fig, ax = plt.subplots()
+FH_res_others[13].plot(ax=ax)
+br.boundary.plot(ax=ax, color='red', linewidth=1.5)
+#%%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+minx = -53.90  # longitude mínima de SC (oeste)
+maxx = -48.30
+
+miny = masked.latitude.min().item()
+maxy = masked.latitude.max().item()
+minx = masked.longitude.min().item()
+maxx = masked.longitude.max().item()
 
 print(f"Latitude min: {lat_min}, max: {lat_max}")
 print(f"Longitude min: {lon_min}, max: {lon_max}")
@@ -119,9 +151,7 @@ fd_joinville = masked.FD_res.sel(
 
 
 fd_joinville.plot(marker='o')
-plt.title("Série Histórica do Fator de Desagregação - Joinville (2011)")
-plt.xlabel("Data")
-plt.ylabel("Fator de Desagregação")
+
 plt.grid(True)
 plt.show()
 
