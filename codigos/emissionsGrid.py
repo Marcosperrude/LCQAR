@@ -17,12 +17,14 @@ Created on Mon May 19 10:24:58 2025
 import geopandas as gpd
 
 def EmssionsGrid(geo_df, gridGerado, poluentes):
-    
-
+    # poluentes = poluentesWoodCoal
+    # geo_df = emissoes
     emiGrid = gridGerado.copy()
+    intersec = gpd.sjoin( geo_df,gridGerado, how='inner', predicate='intersects')
     
-    intersec = gpd.sjoin(geo_df, gridGerado, how='inner', predicate='intersects')
-    
+    for n in poluentes:
+        emiGrid[n]= 0.0
+        
     intersec = intersec.merge(
         gridGerado[['geometry']],
         left_on='index_right', right_index=True, suffixes=('', '_right')
@@ -35,10 +37,10 @@ def EmssionsGrid(geo_df, gridGerado, poluentes):
         # Calcula o valor ponderado de emissões diretamente
         ponderado = intersec[pol] * peso
         soma_ponderada = ponderado.groupby(intersec["index_right"]).sum()
-        emiGrid.loc[soma_ponderada.index, pol] = soma_ponderada.values
-
-    return emiGrid   
-#%% Verificando se está gerando certo
+        emiGrid.loc[soma_ponderada.index, pol] = soma_ponderada.values.astype(float)
+        
+    return emiGrid  
+# stá gerando certo
 # import matplotlib.pyplot as plt
 
 # index_cell = 10
