@@ -11,15 +11,16 @@ import numpy as np
 import os
 from timezonefinder import TimezoneFinder
 from emissionsGrid import EmssionsGrid
-
+import dask
+from dask import delayed, compute
+from dask.diagnostics import ProgressBar
 
 #
 def EmissionsPixelsWoodCoal(Tam_pixel, Combustivel, woodEmission, coalEmission
                        , gridGerado, DataPath, OutPath, uf, br_uf, 
                        poluentesWoodCoal, setores):
     # df = WoodCoalDf
-    # uf = 'SP'
-    # Padroniza CD_SETOR
+    # # Padroniza CD_SETOR
     for df in [woodEmission, coalEmission]:
         df['CD_SETOR'] = df['CD_SETOR'].astype(str)
     # Processa os estados dentro do grid
@@ -87,6 +88,7 @@ def EmissionsPixelsWoodCoal(Tam_pixel, Combustivel, woodEmission, coalEmission
 # plt.show()
 
 #%%
+import xarray as xr
 #Gerar Grid de emissoes de GLP
 def EmissionsPixelsGLP (combDf ,br_mun, gridGerado, poluentesGLP):
     br_mun['CD_MUN'] = br_mun['CD_MUN'].astype(int)#Shape com geometria
@@ -129,55 +131,73 @@ def cellTimeZone(xx,yy):
     return ltcGrid
 
 
-def GridMat5D(combustivel, emiGrid, gridMat5D, poluentes, DataPath, uf):
-    # Carrega fatores temporais históricos
-    temporalFactorHist = pd.read_csv(DataPath + '\\fatdesEPE.csv', index_col=0)
-
+def GridMat5D(combustivel, emiGrid, poluentes, DataPath, uf):
 
     # Carrega fatores temporais mensais
     temporalFactor = pd.read_csv(DataPath + '\\fatdes.csv')
-    temporalFactorUF = temporalFactor[temporalFactor['UF'] == uf]
-
+    temporalFactorUF = temporalFactor[temporalFactor['UF Destino'] == uf]
+    
+    
+    if combustivel in ['Lenha', 'Carvao']:
+        temporalEscale = 54
+        temporalFactorHist = pd.read_csv(DataPath + '\\fatdesEPE.csv', index_col=0)
+        temporalFactorCombustivel = temporalFactorHist.loc[combustivel].reset_index()
+        
+    elif combustivel == 'GLP':
+        temporalEscale = 23
+        
+    data_vars = {}
 
     # Loop para cada poluente
     for ii, pol in enumerate(poluentes):
-        gridMat = np.reshape(
-            emiGrid[pol].fillna(0),
-            (np.shape(np.unique(emiGrid.lon))[0],
-             np.shape(np.unique(emiGrid.lat))[0])
-        ).transpose()
-    
-        # Loop para cada Ano
-        for jj in range(gridMat5D.shape[1]):
-            
-            #Se lenha ou carvao, desagregar anualmente
+    # pol = 'PM'        
+    # ii = 0   
+        pivot = emiGrid.pivot_table(index='lat', columns='lon', values=pol, fill_value=0)
+        gridMat = pivot.values  # Transposta correta
+        
+        print(f'Processando {pol}')
+        
+        gridMat4d = np.zeros((temporalEscale, 12, len(emiGrid['lat'].unique()),
+                              len(emiGrid['lon'].unique())))
+
+                                                                                                                 
+
+        for jj in range(temporalEscale):
             if combustivel in ['Lenha', 'Carvao']:
+                # Desagregação anual
+                gridMat2d = gridMat * temporalFactorCombustivel[combustivel].iloc[jj]
+                # Desagregação mensal
+            else : 
+                gridMat2d = gridMat
                 
-                temporalFactorCombustivel = temporalFactorHist.loc[combustivel].reset_index()
+            for kk in range(12):
                 
-                #Desagregação anual
-                gridMat4D = gridMat * temporalFactorCombustivel[combustivel].iloc[jj]
-                
-                # desagregar mensal
-                for kk in range(12):
-                    # Aplica fator mensal
-                    gridMat5D[ii, jj, kk, :, :] += gridMat4D * temporalFactorUF['Peso'].reset_index().iloc[kk].Peso
+                gridMat4d[jj,kk,:,:] = (gridMat2d * temporalFactorUF['Peso'].reset_index(drop=True).iloc[kk]).astype(np.float16)
             
-            else:
-                # loop para todos os meses
-                for kk in range(12):
-                    # desagregar mensal
-                    gridMat5D[ii, jj, kk, :, :] += gridMat * temporalFactorUF['Peso'].reset_index().iloc[kk].Peso
+        
+        gridMat3r = gridMat4d.reshape(temporalEscale * 12, len(emiGrid['lat'].unique()),
+                                      len(emiGrid['lon'].unique()))
+        fim = pd.Timestamp('2023-12-01')
+        # Começa no primeiro ano contando para trás
+        inicio = fim.year - (temporalEscale -1)
+        inicio = pd.Timestamp(year= inicio, month=1, day=1)
+        
+        da = xr.DataArray(
+        gridMat3r,
+        dims=["time", "lat", "lon"],
+        coords={
+            "time": pd.date_range(
+                start= inicio,
+                periods=gridMat3r.shape[0],
+                freq="MS"
+            ),
+            "lat": emiGrid['lat'].unique(),
+            "lon": emiGrid['lon'].unique()
+            }
+        )
+        data_vars[pol] = da
+    ds = xr.Dataset(data_vars)
+    ds.attrs['description'] = f"Emissões residenciais de {combustivel} - UF {uf}"
 
-            # for jj in range(0,12):
-            #     jj=0
-            #     utcoffs = np.unique(ltcGrid)
-            #     for utcoff in utcoffs:
-            #         utcoff = utcoffs[0]
-            #         idx = ltcGrid==utcoff
-            #         gridMat4D[ii,jj,idx] =gridMat4D[ii,jj,idx]  + gridMat[idx]*temporalFactorUF['Peso'].iloc[jj]
-            #         # gridMat4D[ii,jj,idx]=gridMat4D[ii,jj,idx]+ gridMat[idx]* np.roll(temporalFactorUF['Peso'],
-            #         #                                                                          int(utcoff))[jj]            
+    return ds
 
-
-    return gridMat5D
