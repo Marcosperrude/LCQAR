@@ -9,12 +9,11 @@ import xarray as xr
 import pandas as pd 
 
 
-def temporalDisagg(gridMat5D, poluentes, Combustivel, xx, yy):
+def temporalDisagg(gridMat4d, poluentes, Combustivel, xx, yy):
     # Reshape para 4D: (poluentes, tempo, lat, lon)
-    gridMat4Dtemp = gridMat5D.reshape(
-        gridMat5D.shape[0], 
-        gridMat5D.shape[1] * gridMat5D.shape[2], 
-        gridMat5D.shape[3],
+   
+    gridMat2D = gridMat2D.reshape(
+        gridMat2D.shape[0] * gridMat2D.shape[1], 
         gridMat5D.shape[4]
     )
 
@@ -22,7 +21,7 @@ def temporalDisagg(gridMat5D, poluentes, Combustivel, xx, yy):
     
     fim = pd.Timestamp('2023-12-01')
     # Começa no primeiro ano contando para trás
-    inicio = fim.year - (gridMat5D.shape[1] - 1)
+    inicio = fim.year - (gridMat4d.shape[1] - 1)
     inicio = pd.Timestamp(year= inicio, month=1, day=1)
     
     for i, nome in enumerate(poluentes):
