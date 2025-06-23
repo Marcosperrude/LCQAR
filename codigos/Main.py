@@ -41,11 +41,13 @@ setores = os.path.join(DataPath, 'Setores')
 
 #%% Definindo o grid
 # Definições da grade
-Tam_pixel = 0.1 # 0.1 Equivale a ~1km se o CRS for metros
+Tam_pixel = 1 # 0.1 Equivale a ~1km se o CRS for metros
 minx = -53.0   # longitude mínima (oeste)
 maxx = -44.0   # longitude máxima (leste)
 miny = -25.5   # latitude mínima (sul)
 maxy = -19  # latitude máxima (norte)
+
+# minx, miny, maxx, maxy = br_uf.total_bounds
 
 gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
 
@@ -55,6 +57,7 @@ gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
 
 estados_intersectados = br_uf[br_uf.intersects(gridGerado.unary_union)].copy()
 ufs = list(estados_intersectados['SIGLA_UF'])
+
 
 #%% Xarray de emissoes Lenha e Carvão
  
@@ -75,53 +78,77 @@ woodEmission, coalEmission, poluentesWoodCoal = emissionEstimateWoodCoal(
 # ltcGrid = cellTimeZone(xx,yy)
 
 datasets = {}
-
 for Combustivel in ('Lenha','Carvao'):
-    Combustivel = 'Lenha'
-    # poluentes = poluentesWoodCoal
-    # combustivel = 'Lenha'
-    # uf= 'SC'
-    # ufs = ['SC']
+    # Combustivel = 'Lenha'
+    
     for ii, uf in enumerate(ufs):
-        
+        if ii == 0:
+            # Transformando em uma matriz x por y
+
+            gridMat5D = np.zeros((len(poluentesWoodCoal),54, 12, np.shape(np.unique(gridGerado.lat))[0],
+                                  np.shape(np.unique(gridGerado.lon))[0]
+                                  ))
+
         # Colocando emissões de cada estado na grade
         emiGrid = EmissionsPixelsWoodCoal(Tam_pixel, Combustivel, woodEmission, coalEmission 
                                , gridGerado, DataPath, OutPath,uf, br_uf ,
                                poluentesWoodCoal, setores)
+
         
-        # fig, ax = plt.subplots(figsize=(10, 8))
-        # emiGrid.plot(column = 'CO', ax=ax)
-        # br_uf.boundary.plot(ax=ax, color='red', linewidth=1.5)
-
-        ds = GridMat5D( Combustivel, emiGrid, poluentesWoodCoal,
-            DataPath, uf)
+        # transforma em matriz e soma as emissões de cada estado
+        gridMat5D = GridMat5D(Combustivel, emiGrid, gridMat5D, poluentesWoodCoal, 
+                              DataPath, uf)
 
 
-    
-        if ii == 0:
-            dsAll = ds
-        else:
-            # Para os demais: soma as emissões por poluente
-            for pol in poluentesWoodCoal:
-                dsAll[pol] = dsAll[pol].fillna(0) + ds[pol].fillna(0)
+    ds = temporalDisagg(gridMat5D, poluentesWoodCoal, Combustivel, xx, yy)
+    datasets[Combustivel] = ds
 
-    datasets[Combustivel] = dsAll 
-    
 emiCoal = datasets['Carvao'].copy()
 emiWood = datasets['Lenha'].copy()
-
 #%%
 
 co = emiWood['PM']
+
 
 fig, ax = plt.subplots()
 ax.pcolor(co['lon'][:], co['lat'], np.mean(co, axis=0))  #Média 
 br_uf.boundary.plot(ax=ax)
 #%%
 
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Criar malha para a grade de emissões (emiWood - SP)
+lon_mesh_emi, lat_mesh_emi = np.meshgrid(emiWood['lon'], emiCoal['lat'])
+
+# Criar malha para o masked (Brasil inteiro)
+lon_mesh_masked, lat_mesh_masked = np.meshgrid(masked['longitude'], masked['latitude'])
+
+plt.figure(figsize=(10, 8))
+
+# Plotar masked (Brasil)
+plt.scatter(lon_mesh_masked, lat_mesh_masked, s=0.5, c='gray', label='Grade masked (Brasil)')
+
+# Plotar emiCoal (SP)
+plt.scatter(lon_mesh_emi, lat_mesh_emi, s=5, c='red', label='Grade emiCoal (SP)')
+
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+plt.title('Comparação das Grades: masked (Brasil) vs emiCoal (SP)')
+plt.legend()
+plt.show()
+
+
+
+
+
+
+#%%
+
 #ordenadas de Joinville
-lat_joinville = -26.3045
-lon_joinville = -48.8487
+lat_joinville = -11
+lon_joinville = -18.8487
 co = emiWood['CO']
 # Encontrar índices mais próximos
 lat_idx = np.abs(co['lat'].values - lat_joinville).argmin()
