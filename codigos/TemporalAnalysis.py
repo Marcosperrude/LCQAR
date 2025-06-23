@@ -5,10 +5,15 @@ Created on Wed Apr 16 15:58:24 2025
 @author: Marcos.Perrude
 """
 import pandas as pd
-import seaborn as sbn
 import matplotlib.pyplot as plt
-import numpy as np
 import os
+import seaborn as sns
+import xarray as xr
+import geopandas as gpd
+import re 
+import os
+import rioxarray
+from os import listdir
 
 DataDir = r"C:\Users\marcos perrude\Documents\LCQAR"
 #Pasta dados
@@ -60,12 +65,7 @@ fatdesEPE.to_csv(os.path.join(OutPath, 'fatdesEPE.csv'), index = True)
 
 #%%
 
-import xarray as xr
-import geopandas as gpd
-import re 
-import os
-import rioxarray
-from os import listdir
+
 Cams = os.path.join(DataPath, 'CAMS')
 
 arquivos = [os.path.join(Cams, f) for f in listdir(Cams) if f.endswith('.nc')]
@@ -94,74 +94,66 @@ maxy = masked.latitude.max().item()
 minx = masked.longitude.min().item()
 maxx = masked.longitude.max().item()
 
+FD_res = masked['FD_res']
 
+FH_res_others = masked['FH_res_others']
+FH_res_pm10_pm25 = masked['FH_res_pm10_pm25']
+
+FD = FD_res.assign_coords(day=FD_res['time'].dt.day, 
+                              month=FD_res['time'].dt.month) 
+
+dayDisagg = FD.groupby(['month', 'day']).mean('time')
+dayDisagg = dayDisagg.rename({'latitude':'lat', 'longitude':'lon'})
 
 # fig, ax = plt.subplots(figsize=(10, 8))
 # masked.plot(ax=ax)
 # br.boundary.plot(ax=ax, color='red', linewidth=1.5)
-
-#%%
-FD_res = masked['FD_res']
-FH_res_others = masked['FH_res_others']
-FH_res_pm10_pm25 = masked['FH_res_pm10_pm25']
-
-FD_res_mean = FD_res.resample(time='D').mean(dim=['latitude', 'longitude'])  # (latitude, longitude)
-FH_res_others_mean = FH_res_others.mean(dim=['latitude', 'longitude'])  # (latitude, longitude)
-FH_res_pm10_pm25_mean = FH_res_pm10_pm25.mean(dim=['latitude', 'longitude'])  # (latitude, longitude)
-
-fig, ax = plt.subplots()
-FH_res_others[13].plot(ax=ax)
-br.boundary.plot(ax=ax, color='red', linewidth=1.5)
 #%%
 
+soma_mes = dayDisagg.groupby('month').sum('day')
+padrao_diario_norm = dayDisagg / soma_mes
+sns.set(style="whitegrid")
 
+# Coordenadas das cidades
+cidades = {
+    "Joinville":  (-26.30, -48.85),
+    "São Paulo":  (-23.55, -46.63),
+    "Salvador":   (-12.98, -38.48)
+}
 
+for nome, (lat, lon) in cidades.items():
+    pixel = padrao_diario_norm.sel({'lat': lat, 'lon': lon}, method='nearest').compute()
+    df = pixel.to_dataframe(name='valor').reset_index()
 
+    fig, axes = plt.subplots(3, 4, figsize=(16, 10), sharey=True)
+    axes = axes.flatten()
 
+    for mes in range(1, 13):
+        ax = axes[mes - 1]
+        dados_mes = df[df['month'] == mes]
+        sns.lineplot(data=dados_mes, x='day', y='valor', ax=ax, color='royalblue')
+        ax.set_title(f"Mês {mes:02d}")
+        ax.set_xlabel("Dia do mês")
+        ax.set_ylabel("Fração diária")
 
+    fig.suptitle(f"Padrão diário normalizado por mês - {nome}", fontsize=16)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.show()
 
+# Coordenadas das cidades
+cidades = {
+    "Joinville":  (-26.30, -48.85),
+    "São Paulo":  (-23.55, -46.63),
+    "Salvador":   (-12.98, -38.48)
+}
 
-
-
-
-
-
-
-minx = -53.90  # longitude mínima de SC (oeste)
-maxx = -48.30
-
-miny = masked.latitude.min().item()
-maxy = masked.latitude.max().item()
-minx = masked.longitude.min().item()
-maxx = masked.longitude.max().item()
-
-print(f"Latitude min: {lat_min}, max: {lat_max}")
-print(f"Longitude min: {lon_min}, max: {lon_max}")
-
-
-lat_joi = -26.304
-lon_joi = -48.848
-
-# Selecionar o pixel mais próximo
-fd_joinville = masked.FD_res.sel(
-    latitude=lat_joi,
-    longitude=lon_joi,
-    method='nearest'
-)
-
-
-fd_joinville.plot(marker='o')
-
-plt.grid(True)
-plt.show()
-
-# soma_fd = fd_joinville.sum().item()
-
-# # Número de dias
-# n_dias = fd_joinville.sizes['time']
-
-# # Média dos fatores diários
-# media_fd = soma_fd / n_dias
-
-# print(f"Soma total: {soma_fd:.6f}")
-# print(f"Média: {media_fd:.6f}")
+for nome, (lat, lon) in cidades.items():
+    pixel = padrao_diario_norm.sel({'lat': lat, 'lon': lon}, method='nearest').compute()
+    
+    # Soma dos valores diários por mês
+    soma_por_mes = pixel.sum(dim='day')
+    
+    print(f"\n📍 Soma dos valores diários por mês - {nome}")
+    for mes in range(1, 13):
+        valor = soma_por_mes.sel(month=mes).item()
+        print(f"  Mês {mes:02d} → soma = {valor:.6f}")
