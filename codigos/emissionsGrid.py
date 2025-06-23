@@ -22,8 +22,6 @@ def EmssionsGrid(geo_df, gridGerado, poluentes):
     emiGrid = gridGerado.copy()
     intersec = gpd.sjoin( geo_df,gridGerado, how='inner', predicate='intersects')
     
-    for n in poluentes:
-        emiGrid[n]= 0.0
         
     intersec = intersec.merge(
         gridGerado[['geometry']],
@@ -34,8 +32,10 @@ def EmssionsGrid(geo_df, gridGerado, poluentes):
     peso = intersec_area / intersec.geometry.area
 
     for pol in poluentes:
+        # pol = 'CO'
         # Calcula o valor ponderado de emissões diretamente
         ponderado = intersec[pol] * peso
+        
         soma_ponderada = ponderado.groupby(intersec["index_right"]).sum()
         emiGrid.loc[soma_ponderada.index, pol] = soma_ponderada.values.astype(float)
         
