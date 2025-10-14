@@ -1,4 +1,6 @@
+# %%
 # -*- coding: utf-8 -*-
+
 """
 Created on Wed Apr 30 14:24:15 2025
 
@@ -12,14 +14,18 @@ import os
 # from timezonefinder import TimezoneFinder
 from emissionsGrid import EmssionsGrid
 import xarray as xr
+import calendar
+from temporalDisagg import temporalDisagg
+import dask.array as da
+
 
 #
-def EmissionsPixelsWoodCoal(Tam_pixel, Combustivel, dt
+def EmissionsPixelsWoodCoal(Combustivel, dt
                        , gridGerado, DataPath, OutPath, uf, BR_UF, 
                        poluentesWoodCoal, setores):
     # uf = 'SC'
-     # dt = woodEmission
-    # # Padroniza CD_SETOR
+    # dt = woodEmission
+    # # # Padroniza CD_SETOR
     dt['CD_SETOR'] = dt['CD_SETOR'].astype(str)
     # Processa os estados dentro do grid
     #estados_intersectados = br_uf[br_uf.intersects(gridGerado.unary_union)].copy()
@@ -81,14 +87,15 @@ def EmissionsPixelsWoodCoal(Tam_pixel, Combustivel, dt
 # plt.show()
 
 #%%
+from tqdm import tqdm
 
 def EmissionsPixelsGLP(dt, BR_MUN, gridGerado, poluentesGLP, DataPath, Combustivel, ufs):
-    from emissionsGrid import EmssionsGrid
     """
     Calcula emissões de GLP para todos os anos e UFs de uma só vez.
     Retorna a matriz 5D preenchida.
     """
-
+    BR_mun = BR_MUN.copy()
+    
     gridMat5Dglp = np.zeros((len(poluentesGLP),
                              len(dt['ANO'].unique()), 12,
                              np.shape(np.unique(gridGerado.lat))[0],
@@ -96,17 +103,16 @@ def EmissionsPixelsGLP(dt, BR_MUN, gridGerado, poluentesGLP, DataPath, Combustiv
 
 
     # Merge com geometrias
-    BR_MUN['CD_MUN'] = BR_MUN['CD_MUN'].astype(int)
-    dt['CODIGO IBGE'] = dt['CODIGO IBGE'].astype(int)
-    dt = dt.rename(columns={'CODIGO IBGE': 'CD_MUN'})
+    BR_mun['CD_MUN'] = BR_mun['CD_MUN'].astype(int)
+    dt['CD_MUN'] = dt['CD_MUN'].astype(int)
     geoCombDf = pd.merge(dt, 
-                         BR_MUN[['CD_MUN', 'geometry']], 
+                         BR_mun[['CD_MUN', 'geometry']], 
                          on='CD_MUN',
                          how='left')
     geoCombDf = gpd.GeoDataFrame(geoCombDf, geometry='geometry')
 
     # Loop ano/UF
-    for ano in geoCombDf['ANO'].unique():
+    for ano in tqdm(geoCombDf['ANO'].unique(), desc="Processando anos"):
         # ano = 2022
         print(f"Processando {ano}...")
         dados_ano = geoCombDf[geoCombDf['ANO'] == ano]
@@ -115,6 +121,7 @@ def EmissionsPixelsGLP(dt, BR_MUN, gridGerado, poluentesGLP, DataPath, Combustiv
             # uf= 'SC'
             dados_ano_uf = dados_ano[dados_ano['UF'] == uf]
             emiGridGLP = EmssionsGrid(dados_ano_uf, gridGerado, poluentesGLP)
+            
             gridMat5Dglp = GridMat5D(Combustivel, emiGridGLP, gridMat5Dglp,
                                      poluentesGLP, DataPath, uf, ano)
             
@@ -203,53 +210,54 @@ def EmissionsPixelsGLP(dt, BR_MUN, gridGerado, poluentesGLP, DataPath, Combustiv
 #     return gridMat5D
 
 
-def GridMat5D(combustivel, emiGrid, gridMat5D, poluentes, DataPath, uf, ano = None):
+def GridMat5D(combustivel, emiGrid, gridMat5D, poluentes, DataPath, uf, anos):
    
     
+       # combustivel= 'Lenha'
+       # emiGrid = emiGridGLP
+       # gridMat5D = gridMat5Dglp
+       # poluentes = poluentesWoodCoal
+       
        # combustivel= 'Propano'
        # emiGrid = emiGridGLP
        # gridMat5D = gridMat5Dglp
        # poluentes = poluentesGLP
        
+    # Verificar, pois foi feita quantificação para 2022, mas atribui o ano como
+    # refeferencia 2023
     temporalFactorHist = pd.read_csv(DataPath + '/fatdesEPE.csv', index_col=0)
     temporalFactor = pd.read_csv(DataPath + '/fatdes.csv')
     temporalFactorUF = temporalFactor[temporalFactor['UF Destino'] == uf]
     
-    emiGrid['lat'] = emiGrid['lat'].round(6)
-    emiGrid['lon'] = emiGrid['lon'].round(6)
     
     #emiGrid = emiGrid.fillna(0)
     for ii, pol in enumerate(poluentes):
     # pol = 'PM'
     # ii = 1
-        gridMat = np.reshape(
-          emiGrid[pol].fillna(0),
-          (np.shape(np.unique(emiGrid.lon))[0],
-           np.shape(np.unique(emiGrid.lat))[0])
-      ).transpose() 
+        # gridMat = np.reshape(
+        #   emiGrid[pol].fillna(0),
+        #   (np.shape(np.unique(emiGrid.lat))[0],
+        #    np.shape(np.unique(emiGrid.lon))[0]))
         
-        # pivot = emiGrid.pivot_table(
-        #     index="lat",
-        #     columns="lon",
-        #     values=pol,
-        #     fill_value=0
-        # )
-#emiGrid.plot(column='PM', cmap='viridis', legend=True, figsize=(10,8))
-        # pivot = pivot.reindex(index=np.unique(emiGrid['lat']), 
-        #                       columns=np.unique(emiGrid['lon']), fill_value=0)
+        pivot = emiGrid.pivot_table(
+            index="lat",
+            columns="lon",
+            values=pol,
+            fill_value=0)
+        pivot = pivot.reindex(index=np.unique(emiGrid['lat']), 
+                              columns=np.unique(emiGrid['lon']), fill_value=0)
         
-        # gridMat = pivot.values[::-1, :]
+        gridMat = pivot.values[::-1, :]
         
 
         # Caso 1: Lenha ou Carvão → distribui para todos os anos
         if combustivel in ['Lenha', 'Carvao']:
             # combustivel  ='Lenha'
-            temporalFactorCombustivel = temporalFactorHist.loc[combustivel].reset_index()[combustivel].values
-            
+            # Historico de consumo EPE
             for jj in range(gridMat5D.shape[1]):  # loop anos
             # jj=1
                 temporalFactorCombustivel = temporalFactorHist.loc[combustivel].reset_index()
-    
+                temporalFactorCombustivel = temporalFactorCombustivel[-anos:].reset_index()
                 # desagregação anual
                 gridMat4D = gridMat * temporalFactorCombustivel[combustivel].iloc[jj]
     
@@ -261,7 +269,7 @@ def GridMat5D(combustivel, emiGrid, gridMat5D, poluentes, DataPath, uf, ano = No
         # Caso 2: Propano / Butano → escreve só no ano existente
         else:
             # pega o ano do dataframe de emissões 
-            jj = ano - 2000
+            jj = anos - 2000
             for kk in range(12):
                 gridMat5D[ii, jj, kk, :, :] += gridMat * temporalFactorUF['Peso'].reset_index().iloc[kk].Peso
 
@@ -287,3 +295,70 @@ def GridMat5D(combustivel, emiGrid, gridMat5D, poluentes, DataPath, uf, ano = No
       #                   gridMat5D[ii, jj, kk, :, :] = gridMat * temporalFactorUF['Peso'].reset_index().iloc[kk].Peso
 
     return gridMat5D
+
+def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath , 
+              Combustivel,xx,yy , OutPath):
+    
+    
+    
+    # Loop temporal
+    for iy in range(gridMat5D.shape[1]):
+        for im in range(gridMat5D.shape[2]):
+            
+            days_in_month = calendar.monthrange(2021+iy, im+1)[1]  # exemplo: ano = 1970 + iy
+            # base_emis = gridMat5D[:, iy, im, :, :]  # emissões mensais [pol, lat, lon]
+            
+            mes = np.zeros((len(poluentes),days_in_month,24,
+                            gridMat5D.shape[3],gridMat5D.shape[4]))
+            
+            # Gera série temporal horária local
+            date_range = pd.date_range(f'{2021+iy}-{im+1:02d}-01', 
+                                       periods=days_in_month * 24, 
+                                       freq='H')
+            
+            # Localizar o fator de emissao de hora e dia
+            weekdays = np.array([d.weekday() for d in date_range])  # 0=Segunda
+            hours = np.array([d.hour for d in date_range])
+            week_factors = np.array([weekdis.loc[w, 'weekdis'] for w in weekdays])
+            hour_factors = np.array([hourdis.loc[h, 'hourdis'] for h in hours])
+            
+            combined = week_factors * hour_factors
+            combined  =  combined/ combined.sum()  
+            
+            # Reshape para [dia, hora]
+            combined = combined.reshape(days_in_month, 24)
+            
+            for iday in range(days_in_month):
+                for ihr in range(24):
+                    mes[:, iday, ihr, :, :] = gridMat5D[:, iy, im, :, :] * combined[iday, ihr]
+                   
+            gridMat4Dtemp = mes.reshape(
+               mes.shape[0],
+               mes.shape[1] * mes.shape[2],
+              mes.shape[3],mes.shape[4])
+            
+            data_vars = {}
+            for i, nome in enumerate(poluentes):
+                # i=0
+                # nome = 'PM'
+                data_vars[nome] = xr.DataArray(
+                    gridMat4Dtemp[i,:, :, :],  # shape: (time, lat, lon)Add commentMore actions
+                    dims=["time", "lat", "lon"],
+                    coords={
+                        "time": date_range,
+                        "lon": xx[0, :],
+                        "lat": yy[:,0][::-1]
+                    }
+                )
+            ds = xr.Dataset(data_vars)
+            
+            # ds.attrs['description'] = f"Emissões residenciais de {Combustivel}"
+            # arquivo_path = os.path.join(OutPath,'emissoes' , Combustivel , f'{2021+iy}')
+            # os.makedirs(arquivo_path, exist_ok=True)
+            # arquivo_saida = os.path.join(arquivo_path , f'{2021+iy}_{im+1}.nc')
+            
+            # ds.to_netcdf(arquivo_saida, mode='w')
+
+    return ds
+
+

@@ -11,42 +11,40 @@ Created on Tue Sep  9 15:31:29 2025
 import geopandas as gpd
 import pandas as pd
 import os
-from scipy.optimize import curve_fit
 import xarray as xr
 from tqdm import tqdm   # barra de progresso
 import matplotlib.pyplot as plt
 import numpy as np 
-import geopandas as gpd
-from emissionCity import filtragemcelulas , filtragempostos
+from emissionCity import carregar_vkt_city ,processar_combustivel
+from emissionFactors import carRefuelingEF, rvp
 
 # Caminhos
-tablePath = "/home/marcosperrude/Documents/LCQAR/BRAVES/evaporativas_posto"
+tablePath = "/home/marcos/Documents/LCQAR/BRAVES/evaporativas_posto"
 dataPath = tablePath + '/inputs'
-saidaPath = tablePath + "/outputs"
-os.makedirs(saidaPath, exist_ok=True)
+outPath = tablePath + "/outputs"
 
 
 # 1. Abrir shapefile de municípios (IBGE)
 shp_mun = gpd.read_file(
-    tablePath + '/inputs/BR_Municipios_2022/BR_Municipios_2022.shp').to_crs("EPSG:4326")
+    dataPath + '/BR_Municipios_2022/BR_Municipios_2022.shp').to_crs("EPSG:4326")
 shp_mun['CD_MUN'] = shp_mun['CD_MUN'].astype(int)
 
-# NetCDF de temperatura de 2023 (escala)
-temp =  xr.open_mfdataset(dataPath  +'/WRF/T2.nc')["T2"] - 273.15 
-temp_xr = xr.DataArray(
-    data=temp,
-    dims=["time", "y", "x"],
-    coords=dict(
-        x= temp['XLONG'][0,0,:].to_numpy(),
-        y= temp['XLAT'][0,:,0].to_numpy(),
-        time =temp["XTIME"].values
-    ),
-    name="T2"
-)
-
-temp_xr = temp_xr.rio.write_crs("epsg:4326", inplace=True)
-temp_xr['time'] = temp_xr['time'] - pd.Timedelta(hours=3)
-temp_xr = temp_xr.sel(time=slice("2023-01-01", "2023-12-31"))
+# NetCDF de temperatura de 2023 (escala) do brasil
+# (usado para obter a temp horaria de cada cidade)
+# temp =  xr.open_mfdataset(dataPath  +'/WRF/T2.nc')["T2"] - 273.15 
+# temp_xr = xr.DataArray(
+#     data=temp,
+#     dims=["time", "y", "x"],
+#     coords=dict(
+#         x= temp['XLONG'][0,0,:].to_numpy(),
+#         y= temp['XLAT'][0,:,0].to_numpy(),
+#         time =temp["XTIME"].values
+#     ),
+#     name="T2"
+# )
+# temp_xr = temp_xr.rio.write_crs("epsg:4326", inplace=True)
+# temp_xr['time'] = temp_xr['time'] - pd.Timedelta(hours=3)
+# temp_xr = temp_xr.sel(time=slice("2023-01-01", "2023-12-31"))
 
 
 # Importação das planilhas
@@ -56,108 +54,41 @@ temp_xr = temp_xr.sel(time=slice("2023-01-01", "2023-12-31"))
 sheet_volume = pd.read_excel(
     tablePath + "/SIC 48003009498202458.xlsx", skiprows=4, sheet_name="2023"
 )
-# # conversão últimas 13 colunas (colunas de consumo) em m³
-# sheet_volume.iloc[:, -13:] = sheet_volume.iloc[:, -13:] * \
-#     1000  # última 13 colunas
 
 # Densidade de VOC de acordo com a tempratura
 voc_density = pd.read_csv(tablePath + "/VOC_density.csv")
-# Conversão de Kg/L para Mg/L
+# Conversão de Kg/L para g/L
 voc_density[['VOC_gaso_dens', 'VOC_eth_dens']] = voc_density[
-    ['VOC_gaso_dens', 'VOC_eth_dens']]  * 1000000
+    ['VOC_gaso_dens', 'VOC_eth_dens']]  * 1000
+
 
 # Curva de pressão de vapor da combustivel em relação a % de etanol
 # Extrai os dados de RVP do gráfico deste artigo
 # RVP = https://d35t1syewk4d42.cloudfront.net/file/1410/RVP-Effects-Memo_03_26_12_Final.pdf
-
 rvpCurve = pd.read_csv(tablePath + "/RVP.csv")
 
+# VKT horario por cada cidade para a desagregação de consumo de combsutivel
 desg_consumo = pd.read_parquet(dataPath + '/2023-01-01_00h-2023-01-31_23h.parquet')
+# Lendo os arquivos de desagregaç
+desagPath = os.path.join(dataPath, 'desagregacao_vkt')
 
+# Celulas de localização (id_cell)
 shp_cells = gpd.read_file(dataPath + '/2025-09-22_mesh_BR_GArBR.gpkg')
-shp_cells['fid'] = shp_cells.index + 1
+shp_cells['fid'] = shp_cells.index
+# shp_cells['fid'] = shp_cells.index - 1
 
-
+# Postos do brasil cadastrados no banco de dados do IBAMA
 postos_ibama = pd.read_csv(dataPath + '/postos.csv')
+
+# Postos do brasil cadastrados no banco de dados do Agencia Nacional de Petróleo (anp)
 postos_anp = pd.read_csv(
     dataPath + '/dados-cadastrais-revendedores-varejistas-combustiveis-automoveis.csv', sep=';')
 
-
+# Temperatura media horária de cada cidade (obtivo pelo codigo AnalysisTemp)
+temp = pd.read_csv(f"{outPath}/temperatura_csv/temperatura_cidade_2023_01.csv")
+temp["datetime"] = pd.to_datetime(temp[["year", "month", "day", "hour"]])
+temp = temp.set_index("datetime")
 #%%
-# Obter média de temperatura por mes em cada cidade
-# temp_xr = temp_xr.rio.write_crs(a.crs)
-
-temp_monthly = temp_xr.rio.write_crs(shp_mun.crs)
-
-# Loop por município
-for _, mun in tqdm(shp_mun.iterrows(), total=len(shp_mun), desc="Processando municípios"):
-    # Clipar a cidade no xarray
-    temp_clip = temp_monthly.rio.clip([mun.geometry], shp_mun.crs, drop=True, all_touched=True)
-    
-    # Calcular a média de todos os pixels da cidade
-    temp_vals = temp_clip.mean(dim=("x", "y")).values
-
-    # Processar cada data
-    for ii, date in enumerate(temp_monthly["time"].values):
-        dt = pd.to_datetime(date)
-
-        # Criar DataFrame de uma linha
-        df_row = pd.DataFrame([{
-            "CD_MUN": mun['CD_MUN'],
-            "year":  dt.year,
-            "month": dt.month,
-            "day": dt.day,
-            "hour": dt.hour,
-            "TEMP_C": float(temp_vals[ii]),
-        }])
-
-       
-        filename_csv = f"{saidaPath}/temperatura_csv/temperatura_cidade_{dt.year}_{str(dt.month).zfill(2)}.csv"
-        if not os.path.exists(filename_csv):
-            df_row.to_csv(filename_csv, index=False, mode='w')
-        else:
-            df_row.to_csv(filename_csv, index=False, mode='a', header=False)
-#%%
-def func(x, a, b, c, d):
-    return a*x**3 + b*x**2 + c*x + d
-
-# Calculo d o  fator de emissoes de reabastecimento
-def carRefuelingEF(tamb_list, ethanolPercentage):
-    # ethanolPercentage = 27
-    popt, _ = curve_fit(func, rvpCurve['ETHANOL'], rvpCurve['RVP'])
-    EF_list = []
-    for tamb in tamb_list:
-
-        # Converter temperatura de celsius para Fahrenheit
-        tConv = tamb * (9/5) + 32
-
-        # Extrai RVP para a % de etanol do combsutivel
-        rvpVal = func(ethanolPercentage, *popt)
-
-        # Calculo da temperatura de combustivel que sai da bomba (California study)
-        # Fonte: https://www.epa.gov/sites/default/files/2020-11/documents/420r20012.pdf
-        td = 20.30 + 0.81 * tConv
-
-        # Diferença de temperatura entre o tanque e o dispenser
-        deltaT = 0.418 * td - 16.6
-
-        # Conversão automatica para mg/L (EPA)
-        EF = 264.2 * (-5.909 - 0.0949*deltaT + 0.084*td + 0.485*rvpVal)
-
-        EF_list.append(EF)
-    return EF_list
-
-# Calculo do RVP em função da porcentagem de etanol do combustivel
-def rvp(ethanolPercentage, gasolineEmissionServiceEF):
-
-    # Extrai a pressão de vapor da curva em função da temperatura
-    popt, _ = curve_fit(func, rvpCurve['ETHANOL'], rvpCurve['RVP'])
-    rvp_val = func(ethanolPercentage, *popt)
-
-    # Pressão de vaapor adotada nos EUA (=~10%)
-    rvpUsaGasoline = 9.965801227
-    return gasolineEmissionServiceEF * (rvp_val / rvpUsaGasoline)
-
 
 
 # resultados = []
@@ -234,217 +165,169 @@ def rvp(ethanolPercentage, gasolineEmissionServiceEF):
 #     df_out = pd.DataFrame(resultados)
     
 
-#     df_out.to_csv(f"{saidaPath}/{comb}.csv", index=False, encoding="utf-8-sig")
-#     print(f"✔ CSV salvo: {saidaPath}/{comb}.csv")
+#     df_out.to_csv(f"{outpath}/{comb}.csv", index=False, encoding="utf-8-sig")
+#     print(f"✔ CSV salvo: {outpath}/{comb}.csv")
 
-#%%
 
-dfs = []
+#%% Emissoes de evaporativas de combustivel por cidade
 
-for i in range(1, 13):
-    mes = str(i).zfill(2)  # transforma em '01', '02', ..., '12'
-    temp = pd.read_csv(f"{saidaPath}/temperatura_csv/temperatura_cidade_2023_{mes}.csv")
-    # flori_temp = temp[temp["CD_MUN"] == 4205407]
-    # flori_temp["datetime"] = pd.to_datetime(
-    #     flori_temp[["year", "month", "day", "hour"]]
-    # )
-    dfs.append(temp)
+# Mapear cidades que possuem consumo
+cidades = sheet_volume["COD_LOCALIDADE_IBGE_D"].unique().astype(int)
 
-flori_temp_year = pd.concat(dfs, ignore_index=True)
-flori_temp_year["datetime"] = pd.to_datetime(flori_temp_year[["year", "month", "day", "hour"]])
-flori_temp_year = flori_temp_year.set_index("datetime")
+# Definir parãmetros dde analise
+combustiveis = {
+    "GASOLINA C": {"ethanolPerc": 27},
+    "AEHC": {"ethanolPerc": 93}
+}
+
+
+for cidade in tqdm(cidades, desc="Processando cidades"):
+    # Exemplo para teste
+    # cidade = 3550308
+
+    # FIltrar temperatura horaria para a cidade analisada
+    df_temp_city = temp[temp["CD_MUN"] == cidade].sort_values("datetime")
     
-#%%
-
-temp = pd.read_csv(f"{saidaPath}/temperatura_csv/temperatura_cidade_2023_01.csv")
-temp["datetime"] = pd.to_datetime(temp[["year", "month", "day", "hour"]])
-temp = temp.set_index("datetime")
-
-resultados = []
-
-for comb in ("AEHC", "GASOLINA C"):
-    print(f'Rodando {comb} ')
-
-    # Extrair os dados do combustível
-    df_comb = sheet_volume[sheet_volume["NOM_GRUPO_PRODUTO"] == comb]
-    cidades = df_comb["COD_LOCALIDADE_IBGE_D"].unique().astype(int)
-    
-    # Definir % de etanol dependendo do combustível
-    if comb == "GASOLINA C":
-        ethanolPerc = 27
-    elif comb == "AEHC":
-        ethanolPerc = 93
-
-    # Fatores fixos
-    EFSubmergedFilling = rvp(ethanolPerc, 880)
-    EFTankBreathing = rvp(ethanolPerc, 120)
-
-    # Colunas de volume mensal
     # colunas_meses = [c for c in df_comb.columns if str(c).startswith("20")]
-    colunas_meses =  [202301]
-    for cidade in tqdm(cidades, total=len(cidades),
-                       desc=f"Processando {comb}"):
-        # cidade = 1200138
-        # Filtrar temperatura horária do município
-        df_temp_city = temp[temp["CD_MUN"] == int(cidade)].sort_values("datetime")
+    colunas_meses = [202301]
+    
+    # Loop para todos os meses com consumo
+    for mes in colunas_meses:
+        ano = int(str(mes)[:4])
+        mes_num = int(str(mes)[-2:])
+        
+        # Carregar arquivos de VKT ja corrigido (apenas celulas com postos)
+        desagPath_mes = os.path.join(desagPath, f'{ano}_{str(mes_num).zfill(2)}')
+        desg_consumo_city = carregar_vkt_city(postos_ibama, postos_anp, desagPath,
+                                                  ano, mes_num, cidade, shp_cells)
 
-        for i, mes in enumerate(colunas_meses):
-            # mes = 202301
-            ano = int(str(mes)[:4])
-            mes_num = int(str(mes)[-2:])
-            
-            # Volume mensal do município/combustível
-            volume_mensal = df_comb[df_comb["COD_LOCALIDADE_IBGE_D"] == cidade][mes]
-            desg_consumo_city = desg_consumo[ (desg_consumo["city_id"] == cidade) &
-                                             (desg_consumo.index.month == mes_num)]
-           
-            # Filtragem das celulas que possuem postos
-            desg_consumo_city = filtragemcelulas(postos_ibama, postos_anp, 
-                                                 desg_consumo_city, shp_cells)
-            # Consumo constante por hora no mês
+        # FIltrar a temperatura média da cidade para o mes analisado
+        temp_hour = df_temp_city[df_temp_city["month"] == mes_num].reset_index()
 
-            desg_consumo_city['cons_hour'] = volume_mensal.iloc[
-                0] * desg_consumo_city['vkt_fraction_corrigido']
-            
-       
-            # Seleciona temperaturas apenas desse mês
-            temp_hour = df_temp_city[df_temp_city["month"] == mes_num].reset_index()
-            
-            desg_consumo_city_m= desg_consumo_city.reset_index().rename(
-                columns={'date_range': 'datetime'}).merge(
-                temp_hour[['datetime', 'TEMP_C']],
-                on = 'datetime',
-                how = 'left'
+        resultados = []
+        for comb, props in combustiveis.items():
+            try :  
+                
+                # Obter o consumo do combustivel 
+                consumo_combsutivel = sheet_volume[sheet_volume["NOM_GRUPO_PRODUTO"] == comb]
+                
+                # Volume mensal consumido do combustível
+                volume_mensal = consumo_combsutivel[(consumo_combsutivel[
+                    "COD_LOCALIDADE_IBGE_D"] == cidade) & (consumo_combsutivel[
+                        "NOM_GRUPO_PRODUTO"] == comb)][mes].iloc[0]
+                
+                # Definir a % de ethanol no combustivel
+                ethanolPerc = props["ethanolPerc"]
+                
+                # Fatores de emissao de reabastecimento horário para cada temperatura (EF)
+                EFCarRefueling_hour = carRefuelingEF(temp_hour["TEMP_C"].values,
+                                                     ethanolPerc , rvpCurve)
+               
+                # Fator de emissao para descarte de combustivel
+                EFSubmergedFilling = rvp(ethanolPerc, 880, rvpCurve)
+                
+                # Fator de emissao para respiradores de tanque de armazenamento
+                EFTankBreathing = rvp(ethanolPerc, 120, rvpCurve)
+                
+                #
+                df_comb = processar_combustivel(desg_consumo_city, temp_hour, 
+                                                cidade, mes, comb, props, volume_mensal, 
+                                                ethanolPerc, EFCarRefueling_hour, rvpCurve,
+                                                EFSubmergedFilling, EFTankBreathing)
+                
+                # Armazenar os resultados
+                resultados.append(df_comb)
+                
+                # Soma as emissões dos dois combustíveis e conversao para g/Hora
+                emissoes = pd.concat(resultados, ignore_index=True).groupby(
+                    ["city_id", "cell_id","datetime"], as_index=False)["emis_total"].sum()
+                emissoes["emis_total"] = emissoes["emis_total"] / 1000 
+                    
+                # Salva resultado final
+                filename_parquet = (
+                    f"{outPath}/emissoes_postos/emissoes_{ano}_{str(mes_num).zfill(2)}/"
+                    f"emissoes_{ano}_{str(mes_num).zfill(2)}_{cidade}.parquet"
                 )
-        
-            # EF de reabastecimento horário
-            EFCarRefueling_hour = carRefuelingEF(temp_hour["TEMP_C"].values, ethanolPerc)
-            EFCarRefueling_hour_series = pd.Series(EFCarRefueling_hour, index=temp_hour.datetime)
-        
-            # Sorteio do Submerged Filling (1x na semana → ajuste possível depois)
-            dias_semana_submerged = np.random.choice(range(7), size=3, replace=False)  # 3 dias diferentes
-            horas_submerged = [np.random.randint(6, 23) for _ in range(3)]  # 1 hora para cada dia
-            eventos_submerged = list(zip(dias_semana_submerged, horas_submerged)) 
-            
-            # Loop nas horas do mês
-            for jj, row in desg_consumo_city_m.iterrows():
-                temperatura = row["TEMP_C"]
-                datahora = row.datetime
-        
-                # # densidade VOC
-                # if comb == "GASOLINA C":
-                #     densidade_VOC = voc_density.loc[voc_density[
-                #         'temp_C'] == round(temperatura), 'VOC_gaso_dens'].values[0]
-                # else:  # AEHC
-                #     densidade_VOC = voc_density.loc[voc_density[
-                #         'temp_C'] == round(temperatura), 'VOC_eth_dens'].values[0]
-        
-                # emis_total = (row['cons_hour'] * EFTankBreathing) / densidade_VOC
-                emis_total = (row['cons_hour'] * EFTankBreathing)
+                os.makedirs(os.path.dirname(filename_parquet), exist_ok=True)
+                emissoes.to_parquet(filename_parquet, index=False)
                 
-                # CarRefueling → só horário comercial
-                if 5 <= datahora.hour <= 23:
-                    # emis_total += (row['cons_hour'] * EFCarRefueling_hour_series.loc[
-                    #     datahora]) / densidade_VOC
-                    emis_total += (row['cons_hour'] * EFCarRefueling_hour_series.loc[
-                        datahora]) 
-                # Submerged Filling → só no evento semanal sorteado
-                if (datahora.weekday(), datahora.hour) in eventos_submerged:
-                    # Filtra o DataFrame apenas para a célula desejada e para a data/hora
-                    
-                    emis_id = desg_consumo_city_m.loc[(desg_consumo_city_m[
-                        'cell_id'] == row.cell_id)]
-
-                    # Filtra o DataFrame apenas para essa semana
-                    df_semana = emis_id[emis_id['datetime'].dt.to_period(
-                        'W') == datahora.to_period('W')]
-                    
-                    # Calcula a emissão apenas para essas linhas
-                    # emis_total += ((df_semana['cons_hour'].sum()
-                    #                 * EFSubmergedFilling) / densidade_VOC) / 3
-                    
-                    emis_total += (df_semana['cons_hour'].sum() 
-                                   * EFSubmergedFilling)/ 3
-                # resultados.append({
-                #     "CD_MUN": int(cidade),
-                #     "Combustivel": comb,
-                #     "datetime": datahora,
-                #     "cell_id"  : row['cell_id'],
-                #     "emissao": emis_total
-                # })
-                
-
-                resultados.append({
-                    "CD_MUN": cidade,
-                    "Combustivel": comb,
-                    "year": datahora.year,
-                    "month": datahora.month,
-                    "day": datahora.day,
-                    "hour": datahora.hour,
-                    "cell_id": row['cell_id'],
-                    "emissao": float(emis_total)
-                })
-
-            # Salva todos os resultados da cidade de uma vez
-            df_result = pd.DataFrame(resultados)
-            filename_parquet = f"{saidaPath}/emissoes_postos/emissoes_{ano}_{str(mes_num).zfill(2)}/{cidade}/emissoes_{ano}_{str(mes_num).zfill(2)}_{cidade}.parquet"
-            os.makedirs(os.path.dirname(filename_parquet), exist_ok=True)
-
-            if not os.path.exists(filename_parquet):
-                df_result.to_parquet(filename_parquet, index=False)
-            else:
-                # df_exist = pd.read_parquet(filename_parquet)
-                # df_concat = pd.concat([df_exist, df_result], ignore_index=True)
-                df_result.to_parquet(filename_parquet, index=False)
-                
-
-# Converter para DataFrame final bbvc
-df_out = pd.DataFrame(resultados)
+            except Exception as e:
+             print(f"Erro ao processar {comb} na cidade {cidade}: {e}")
 
 
-df_out = df_out.set_index('datetime')
-
-df_out.to_csv(f"{saidaPath}/emissoes_horarias.csv", index=False, encoding="utf-8-sig")
-print(f"✔ CSV salvo: {saidaPath}/emissoes_horarias.csv")
-
-
-
-# plt.figure(figsize=(12,6))
-
-# for comb, grupo in df_grouped.groupby("Combustivel"):
-#     plt.plot(grupo.datetime, grupo["emissao"], label=comb)
-
-# plt.legend()
-# plt.show()
 #%%
-import dask.dataframe as dd
-p = pd.read_parquet(saidaPath + '/emissoes_postos/emissoes_2023_01/emissoes_2023_01_2706604.parquet')
-# Carrega de forma lazy
-a = dd.read_parquet(saidaPath + '/emissoes_postos/emissoes_2023_01/emissoes_2023_01_2706604.parquet')
-# Cria a coluna datetime
-a['datetime'] = dd.to_datetime(
-    a[['year','month','day','hour']],
-    format="%Y %m %d %H"
+
+saoPaulo = pd.read_parquet(outPath + '/emissoes_postos/emissoes_2023_01/emissoes_2023_01_3550308.parquet')
+
+
+
+# Garantir que os IDs são compatíveis
+shp_cells['cell_id'] = shp_cells['fid'].astype(int)
+saoPaulo['cell_id'] = saoPaulo['cell_id'].astype(int)
+
+## Converter datetime
+saoPaulo['datetime'] = pd.to_datetime(saoPaulo['datetime'])
+
+# Definir resolução do grid (a partir das células)
+# Aqui assumimos que as células são quadradas e têm a mesma dimensão
+res = shp_cells.geometry.iloc[0].bounds  # xmin, ymin, xmax, ymax
+cell_size = res[2] - res[0]
+
+# Criar grid com base nos limites totais das células
+xmin, ymin, xmax, ymax = shp_cells.total_bounds
+
+# Criar coordenadas dos pixels (centros das células)
+x_coords = np.arange(xmin + cell_size / 2, xmax, cell_size)
+y_coords = np.arange(ymin + cell_size / 2, ymax, cell_size)
+
+# Criar arrays vazios para o dataset
+times = sorted(saoPaulo['datetime'].unique())
+emis_array = np.full((len(times), len(y_coords), len(x_coords)), np.nan)
+
+# Criar um mapeamento rápido de cell_id -> índice da célula
+cell_index = {cid: i for i, cid in enumerate(shp_cells['cell_id'])}
+
+# Criar uma correspondência entre cada cell_id e suas coordenadas (x, y)
+centroids = shp_cells.copy()
+centroids['x'] = centroids.geometry.centroid.x
+centroids['y'] = centroids.geometry.centroid.y
+
+# Mapear as emissões para o pixel correspondente
+for t_i, t in enumerate(times):
+    df_t = saoPaulo[saoPaulo['datetime'] == t]
+    for _, row in df_t.iterrows():
+        cell = centroids.loc[centroids['cell_id'] == row['cell_id']]
+        if not cell.empty:
+            cx = cell['x'].values[0]
+            cy = cell['y'].values[0]
+            # Encontrar índices correspondentes no grid
+            ix = np.argmin(np.abs(x_coords - cx))
+            iy = np.argmin(np.abs(y_coords - cy))
+            emis_array[t_i, iy, ix] = row['emis_total']
+
+# Criar Dataset xarray
+ds = xr.Dataset(
+    {
+        "emis_total": (["time", "lat", "lon"], emis_array)
+    },
+    coords={
+        "time": times,
+        "lat": y_coords,
+        "lon": x_coords
+    },
 )
 
-# Faz o groupby de forma distribuída
-b = (
-    a.groupby(['datetime','CD_MUN','cell_id'])['emissao']
-     .sum()
-     .compute()
-     .reset_index()
+ds["emis_total"].sel(time=ds.time.values[0])
+
+# --- Plot simples ---
+plt.figure(figsize=(8, 6))
+ds["emis_total"].sel(time=ds.time.values[0]).plot(cmap="inferno",
+    cbar_kwargs={'label': 'Emissão de VOC (kg/h)'}
 )
-
-c = (
-    b.groupby(['datetime','CD_MUN'])['emissao']
-     .sum()
-     .reset_index()
-)
-
-manaus = c[c['CD_MUN'] == 1302603]
-manaus = manaus.set_index('datetime')
-manaus['emissao'].plot()
-
+plt.xlabel("Longitude")
+plt.ylabel("Latitude")
+plt.grid(False)
+plt.show()
 #%%
 
 emissao_total = (
@@ -500,8 +383,8 @@ postos_emissoes = gdf_postos.merge(
 
 #%% Calculo emissao total de VOC em cada cidade
 
-emissao_combustivelC = pd.read_csv(saidaPath + '/GASOLINA C.csv')
-emissao_AEHC = pd.read_csv(saidaPath + '/AEHC.csv')
+emissao_combustivelC = pd.read_csv(outpath + '/GASOLINA C.csv')
+emissao_AEHC = pd.read_csv(outpath + '/AEHC.csv')
 
 # Calcular emissão total de VOC em cada cidade (Litros)
 def calcular_total(emissao_combustivelC, emissao_AEHC):

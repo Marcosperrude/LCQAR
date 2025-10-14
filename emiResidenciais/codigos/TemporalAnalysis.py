@@ -15,7 +15,7 @@ import os
 import rioxarray
 from os import listdir
 
-DataDir = r"C:\Users\marcos perrude\Documents\LCQAR"
+DataDir = "home\Documents\LCQAR"
 #Pasta dados
 DataPath = os.path.join(DataDir,'Inputs')
 OutPath = os.path.join(DataDir, 'Outputs')

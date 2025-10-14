@@ -19,6 +19,7 @@ import geopandas as gpd
 
 def EmssionsGrid(geo_df, gridGerado, poluentes, inplace=False):
     
+    # geo_df = emissoes_uf
     # geo_df = dados_ano_uf
     # poluentes = poluentesGLP
     
@@ -72,12 +73,12 @@ def EmssionsGrid(geo_df, gridGerado, poluentes, inplace=False):
 # geo_df.boundary.plot(ax=ax, color='black', linewidth=0.5, alpha=0.3)
 
 # # Plota a célula do grid selecionada em vermelho
-# gpd.GeoSeries(gridGerado.loc[index_cell, 'geometry']).boundary.plot(
+# gpd.GeoSeries(gridGerado.loc[intersec['index_right'][0], 'geometry']).boundary.plot(
 #     ax=ax, color='red', linewidth=2, label='Célula do Grid'
 # )
 
 # # Plota os setores que intersectaram com essa célula em azul
-# intersec[intersec['index_right'] == index_cell].geometry.boundary.plot(
+# intersec[intersec['index_right'] == intersec['index_right'][0]].geometry.boundary.plot(
 #     ax=ax, color='blue', linewidth=1, label='Setores Intersectados'
 # )
 
