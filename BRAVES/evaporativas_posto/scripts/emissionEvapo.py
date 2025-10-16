@@ -92,7 +92,7 @@ temp = temp.set_index("datetime")
 
 
 # resultados = []
-# for comb in ("AEHC", "GASOLINA C"):
+# for comb in ("AEHC", "GASOLINA C"):(
 #     print(f'Rodando {comb} ')
 #     # comb = "GASOLINA C"
 #     # Extrair os dados do combustivel

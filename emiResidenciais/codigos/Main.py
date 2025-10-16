@@ -15,9 +15,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 from temporalDisagg import temporalDisagg
 from EmissionsEstimateGLP import emissionEstimateGLP 
-import dask
-from dask import delayed, compute
-from tqdm import tqdm
+from local2UTC import local2UTC
 
 
 #Pasta do repositório
@@ -47,6 +45,8 @@ hourdis = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' , 'hourdis.c
 # Definições da grade
 
 shp_cells = gpd.read_file('/home/marcos/Documents/LCQAR/BRAVES/evaporativas_posto/inputs/2025-09-22_mesh_BR_GArBR.gpkg')
+gridGerado = shp_cells
+gridGerado = gridGerado.to_crs(crs='EPSG:4674')
 
 
 # Tam_pixel = 1  # ~1 km
@@ -59,8 +59,6 @@ shp_cells = gpd.read_file('/home/marcos/Documents/LCQAR/BRAVES/evaporativas_post
 
 # gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
 
-gridGerado = shp_cells
-gridGerado = gridGerado.to_crs(crs='EPSG:4674')
 
 # fig, ax = plt.subplots(figsize=(10, 10))
 # gridGerado.boundary.plot(ax=ax, color='gray')
@@ -68,7 +66,6 @@ gridGerado = gridGerado.to_crs(crs='EPSG:4674')
 
 gridGerado['lon'] = gridGerado.geometry.centroid.x.round(6)
 gridGerado['lat'] =  gridGerado.geometry.centroid.y.round(6)
-
 gridGerado = gridGerado.drop_duplicates(subset=['lon', 'lat'])
 
 xx, yy = np.meshgrid(np.sort(np.unique(gridGerado.lon)),
@@ -90,6 +87,10 @@ woodEmission, coalEmission, poluentesWoodCoal = emissionEstimateWoodCoal(
 
 datasets = {}
 anos = 3
+
+lc2utc, tag = local2UTC(xx,yy)
+lc2utc = lc2utc.T
+
 # Criando loop para lenha e carvao
 for Combustivel, dt in zip(['Lenha','Carvao'], [woodEmission, coalEmission ]):
     # uf='SC'
@@ -123,41 +124,64 @@ for Combustivel, dt in zip(['Lenha','Carvao'], [woodEmission, coalEmission ]):
         
     #Fazendo a desagregação anual e mensal
     gridMat7D = GridMat7D(weekdis,hourdis,gridMat5D,poluentesWoodCoal,DataPath, Combustivel,
-                   xx,yy , OutPath)
+                   xx,yy , OutPath , lc2utc)
     
     # ds = temporalDisagg(gridMat7D, poluentesWoodCoal, Combustivel, xx, yy)
     # datasets[Combustivel] = ds
 
 emiCoal = datasets['Carvao'].copy()
 emiWood = datasets['Lenha'].copy()
-#%%
+#%% Tentando ajustar tempo
 
-# Escolha o poluente, ano e mês
+emi = xr.open_dataset("/home/marcos/Documents/LCQAR/emiResidenciais/outputs/emissoes/Propano/2021/2021_2.nc") # substitua 'emissao' pelo nome da variável
+co_emi = emi['PM']
+# calcula deslocamento de fuso horário em horas (inteiro)
+offset_hours = np.round(emi.lon / 15).astype(int)
+# converte para timedelta (como array numpy, não como TimedeltaIndex)
+offset_timedelta = pd.to_timedelta(offset_hours.values, unit="h").to_numpy()
+# cria atriz 2D [time, lon] com broadcasting explícito
+local_time = (
+    emi.time.values[:, np.newaxis] + offset_timedelta[np.newaxis, :]
+)
+# adiciona ao dataset como coordenada auxiliar
+emi = emi.assign_coords(local_time=(("time", "lon"), local_time))
+
+
 import matplotlib.pyplot as plt
-import numpy as np
 
-# Escolha o poluente, ano e mês
-i_pol = 0     # índice do poluente (0 a 4)
-i_ano = 0     # 0=2021, 1=2022, 2=2023
-i_mes = 0     # 0=janeiro, 11=dezembro
+# define 4 fusos e coordenadas aproximadas de cada pixel
+# escolha uma longitude e uma latitude dentro de cada fuso
+pixels = {
+    -5: {'lon': -75, 'lat': -10},  # Oeste Acre/AM
+    -4: {'lon': -60, 'lat': -10},  # MT/RO
+    -3: {'lon': -45, 'lat': -20},  # Sudeste
+    -2: {'lon': -33, 'lat': -15}   # Litoral
+}
 
-# Extrai o campo 2D (lat x lon)
-emis_2d = gridMat5D[i_pol, i_ano, i_mes, :, :]
+fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+axes = axes.flatten()
 
-# Cria arrays de coordenadas com base em shp_cells
-# (certifique-se de que yy e xx estão em meshgrid no mesmo formato)
-lats = np.sort(gridGerado['lat'].unique())[::-1]
-lons = np.sort(gridGerado['lon'].unique())
+for i, (fuso, coords) in enumerate(pixels.items()):
+    # encontra índices de lat/lon mais próximos
+    lat_idx = np.argmin(np.abs(emi.lat.values - coords['lat']))
+    lon_idx = np.argmin(np.abs(emi.lon.values - coords['lon']))
+    
+    # extrai histórico horário do pixel
+    co_pixel = emi.CO[:, lat_idx, lon_idx]
+    
+    # extrai hora local do pixel
+    local_pixel = emi.local_time[:, lon_idx]
+    
+    # plota histórico
+    axes[i].plot(local_pixel, co_pixel, marker='.', linestyle='-', label=f'Pixel {coords}')
+    axes[i].set_title(f'Fuso UTC{fuso:+d} - Pixel ({coords["lat"]}, {coords["lon"]})')
+    axes[i].set_xlabel('Hora local')
+    axes[i].set_ylabel('CO [unit]')
+    axes[i].grid(True)
+    axes[i].legend()
 
-# Plot simples
-plt.figure(figsize=(8, 6))
-plt.pcolormesh(lons, lats, emis_2d, shading='auto')
-plt.colorbar(label='Emissão (ton/mês)')
-plt.title(f'Poluente {i_pol} | Ano {2021 + i_ano} | Mês {i_mes + 1}')
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
+plt.tight_layout()
 plt.show()
-
 
 #%%
 # co = ds['CO']
@@ -209,7 +233,7 @@ for Combustivel, dt in zip(['Lenha','Carvao'], [emiWood, emiCoal]):
     # fig.savefig(f"./outputs/figuras/figura_emissao_{Combustivel_safe}_01.png", dpi=1500, bbox_inches='tight')
     plt.show()
 #%%
-ds_hourly = ds['PM'].groupby('time.hour').mean(dim='time')
+emi = emi['PM'].groupby('time.day').mean(dim='time')
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -298,40 +322,15 @@ plt.show()
 
 
 
-#%%
-
-import xarray as xr
-import matplotlib.pyplot as plt
-
-# Exemplo: abrindo o arquivo NetCDF (se ainda não estiver carregado)
-# co_sc = xr.open_dataset("./outputs/co_sc_santa_catarina.nc")['emissao']  # substitua 'emissao' pelo nome da variável
-
-# Coordenadas de Joinville
-lat_joinville = -26.3044
-lon_joinville = -48.8485
-
-# Seleciona o pixel mais próximo
-pixel_joinville = co.sel(
-    lat=lat_joinville, 
-    lon=lon_joinville, 
-    method='nearest'
-)
-
-# Plotar emissões ao longo do tempo
-pixel_joinville.plot(marker='o')
-plt.title("Emissões em Joinville ao longo do tempo")
-plt.ylabel("Emissão")
-plt.xlabel("Tempo")
-plt.grid(True)
-plt.show()
-
-
-
 #%%ANALISAR!!!!!!!
 
 #Fonte dos dados: https://dados.gov.br/dados/conjuntos-dados/vendas-de-derivados-de-petroleo-e-biocombustiveis
-glpDf = pd.read_csv(DataPath + '/vendas-anuais-de-glp-por-municipio.csv',encoding ='utf-8')
+glpDf = pd.read_csv(DataPath + '/vendas-anuais-de-glp-por-municipio_1.csv',encoding ='utf-8',  sep=';')
+glpDf.rename(columns={'CÓDIGO IBGE': 'CODIGO IBGE','MUNICÍPIO': 'MUNICIPIO'}, inplace=True)
+
 glpDf = glpDf[glpDf['ANO'] >= 2000]
+glpDf =  glpDf[glpDf['P13'] >= 0 & glpDf['P13']]
+
 propEmiCid, butEmiCid, poluentesGLP = emissionEstimateGLP(DataPath, OutPath, glpDf)
 
 
@@ -344,8 +343,9 @@ for Combustivel, dt in zip(['Propano', 'Butano'], [propEmiCid, butEmiCid]):
     
     # Combustivel = 'Propano'
     # dt = propEmiCid
-    #O PRPBLEMA ESTA AQUI!!!!
+    # O PRPBLEMA ESTA AQUI!!!!
     
+    dt = dt[dt['ANO'] >= 2021]
     
     gridMat5Dglp = EmissionsPixelsGLP(dt, BR_MUN, gridGerado, poluentesGLP, DataPath, Combustivel , ufs)
 
@@ -359,9 +359,9 @@ for Combustivel, dt in zip(['Propano', 'Butano'], [propEmiCid, butEmiCid]):
                      Combustivel, xx, yy, OutPath)
     
     
-emiPro = datasetsglp['Propano'].copy()
-emiBut = datasetsglp['Butano'].copy()
-emiGLP = datasetsglp['Butano'].copy() + datasetsglp['Propano'].copy()
+# emiPro = datasetsglp['Propano'].copy()
+# emiBut = datasetsglp['Butano'].copy()
+# emiGLP = datasetsglp['Butano'].copy() + datasetsglp['Propano'].copy()
 
 #Loop para todos os combustíveis
 
