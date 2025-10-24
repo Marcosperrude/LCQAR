@@ -22,10 +22,16 @@ def emissionEstimateGLP(DataPath, OutPath, glpDf ):
     #https://www.epa.gov/sites/default/files/2020-09/documents/1.5_liquefied_petroleum_gas_combustion.pdf
     emiFac  = pd.read_csv(DataPath + '/fatorEmissao_Prop_But.csv' , index_col=[0])
     
+    # Para Enxofre
+    # Teor max de enxofre no glp em mg S/kg de acordo com https://www.sindigas.org.br/Download/PUBLICACOES_SINDIGAS/glp-energetico-de-transicao-estudo-fernando-corner.pdf?utm_source=chatgpt.com
+    # COnverter a concentração de enxofre de mg/kg para gr/ft³
+    MAxGLPN = (140 * 2.3)/(1000*0.353147*0.0647989)
+    
+    emiFac['SO2'] =  emiFac['SO2']*MAxGLPN
     #Conversao lb/10³gal --> Kg/m³ -->Ton/m³
     emiFac  = (emiFac * 0.12)/1000
     
-    
+
     
     emiCidDict = {}
     # Loop pelos combustíveis disponíveis em emiFac (assume que o índice são os nomes)

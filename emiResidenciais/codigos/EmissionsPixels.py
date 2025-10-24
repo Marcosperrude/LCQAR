@@ -304,6 +304,7 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
     # poluentes = poluentesGLP
     # Loop temporal
     for iy in range(gridMat5D.shape[1]):
+        # iy = 0
         for im in range(gridMat5D.shape[2]):
             
             days_in_month = calendar.monthrange(2021+iy, im+1)[1]  # exemplo: ano = 1970 + iy
@@ -364,7 +365,7 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
                 )
             ds = xr.Dataset(data_vars)
             
-            ds.attrs['description'] = f"Emissões residenciais de {Combustivel}"
+            ds.attrs['description'] = f"Emissões residenciais de {Combustivel} em toneladas"
             arquivo_path = os.path.join(OutPath,'emissoes' , Combustivel , f'{2021+iy}')
             os.makedirs(arquivo_path, exist_ok=True)
             arquivo_saida = os.path.join(arquivo_path , f'{2021+iy}_{im+1}.nc')
@@ -372,5 +373,3 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
             ds.to_netcdf(arquivo_saida, mode='w')
 
     return ds
-
-
