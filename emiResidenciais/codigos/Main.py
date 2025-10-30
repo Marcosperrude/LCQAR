@@ -332,8 +332,6 @@ im1 = axes[0].pcolormesh(
 )
 BR_UF.boundary.plot(ax=axes[0], color='black', linewidth=0.5)
 axes[0].set_title("EDGAR CO 2021 (Recorte Brasil)")
-axes[0].set_xlabel("")
-axes[0].set_ylabel("")
 cbar1 = fig.colorbar(im1, ax=axes[0], orientation='vertical', fraction=0.046, pad=0.04)
 cbar1.set_label("Concentração / Emissão (ton/mês)")
 
@@ -347,8 +345,6 @@ im2 = axes[1].pcolormesh(
 )
 BR_UF.boundary.plot(ax=axes[1], color='black', linewidth=0.5)
 axes[1].set_title("Emissões Residenciais CO 2021")
-axes[1].set_xlabel("")
-axes[1].set_ylabel("")
 cbar2 = fig.colorbar(im2, ax=axes[1], orientation='vertical', fraction=0.046, pad=0.04)
 cbar2.set_label("Concentração / Emissão (ton/mês)")
 

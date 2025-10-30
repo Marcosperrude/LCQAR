@@ -33,12 +33,11 @@ def emissionEstimateWoodCoal(WoodCoalDf,DataPath,OutPath):
     # Remove massas de água
     WoodCoalDf = WoodCoalDf[(WoodCoalDf["CD_SIT"] != 9) & (WoodCoalDf['v0002'] != 0)]  
     
-    
-    
+
     #Classificando os setores
     WoodCoalDf["Classificacao"] = WoodCoalDf["CD_SIT"].map(classificacao['Descricao'])
 
-    # # Mapear a quantidade de residencias que utilizam lenha
+    # # Mapear a quantidade de residencias que utilizam lenha (%)
     # WoodCoalDf["Fator_Lenha"] = WoodCoalDf["Classificacao"].map(fatores_pnad["Lenha"].to_dict())
     WoodCoalDf = WoodCoalDf.merge(
         fatores_pnad[["NM_UF", "Classificacao", "Fator"]],
@@ -71,6 +70,7 @@ def emissionEstimateWoodCoal(WoodCoalDf,DataPath,OutPath):
      # emissões em toneladas de poluentes
     # Fator de conversão (0.5) de lb/ton --> kg/ton --> ton/ton
     for i, pol in enumerate(emissionFactor['Poluentes']):
+        i  = 3
         woodEmission[pol] = ((WoodCoalDf['Consumo_lenha[ton/ano]'] * emissionFactor['Lenha'][i] * 0.5) / 1000)
         coalEmission[pol] = ((WoodCoalDf['Consumo_Carvao[ton/ano]'] * emissionFactor['Lenha'][i] * 0.5) / 1000)
     
