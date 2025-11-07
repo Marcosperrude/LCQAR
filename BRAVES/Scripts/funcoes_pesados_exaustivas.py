@@ -730,9 +730,9 @@ def carregar_temperatura_media(caminho_diretorio):
     """
 
     temperatura_media = pd.read_excel(
-        caminho_diretorio + "/6.TemperaturaMediaNormalClimatologia1991-2020"
-        "/Normal-Climatologica-TMEDSECA.xlsx",
+        caminho_diretorio + "/6.TemperaturaMediaNormalClimatologia1991-2020/Normal-Climatologica-TMEDSECA.xlsx",
         skiprows=2)
+    
     temperatura_media = (temperatura_media
                          .rename(columns={col: col
                                           .lower()

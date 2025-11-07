@@ -270,7 +270,7 @@ def GridMat5D(combustivel, emiGrid, gridMat5D, poluentes, DataPath, uf, anos):
         # Caso 2: Propano / Butano → escreve só no ano existente
         else:
             # pega o ano do dataframe de emissões 
-            jj = anos - 2021
+            jj = anos - 2023
             for kk in range(12):
                 gridMat5D[ii, jj, kk, :, :] += gridMat * temporalFactorUF['Peso'].reset_index().iloc[kk].Peso
 
@@ -304,17 +304,18 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
     # poluentes = poluentesGLP
     # Loop temporal
     for iy in range(gridMat5D.shape[1]):
-        # iy = 0
+         # iy = 0
         for im in range(gridMat5D.shape[2]):
-            
-            days_in_month = calendar.monthrange(2021+iy, im+1)[1]  # exemplo: ano = 1970 + iy
+            # im= 1
+            days_in_month = calendar.monthrange(2023+iy, im+1)[1]  # exemplo: ano = 1970 + iy
             # base_emis = gridMat5D[:, iy, im, :, :]  # emissões mensais [pol, lat, lon]
             
+            # Cria array 5d
             mes = np.zeros((len(poluentes),days_in_month,24,
                             gridMat5D.shape[3],gridMat5D.shape[4]))
             
             # Gera série temporal horária local
-            date_range = pd.date_range(f'{2021+iy}-{im+1:02d}-01', 
+            date_range = pd.date_range(f'{2023+iy}-{im+1:02d}-01', 
                                        periods=days_in_month * 24, 
                                        freq='H',
                                        )
@@ -325,6 +326,7 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
             week_factors = np.array([weekdis.loc[w, 'weekdis'] for w in weekdays])
             hour_factors = np.array([hourdis.loc[h, 'hourdis'] for h in hours])
             
+            # desagregação taxa de emissao dia*hora
             combined = week_factors * hour_factors
             combined  =  combined/ combined.sum()  
             
@@ -341,14 +343,14 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
                mes.shape[1] * mes.shape[2],
               mes.shape[3],mes.shape[4])
             
+            # Calcula o fuso horário local
+            # time_local = np.empty((gridMat4Dtemp.shape[1] , gridMat5D.shape[3],
+            #                        gridMat5D.shape[4]), dtype='datetime64[ns]')
             
-            time_local = np.empty((gridMat4Dtemp.shape[1] , gridMat5D.shape[3],
-                                   gridMat5D.shape[4]), dtype='datetime64[ns]')
-            
-            for i in range(gridMat5D.shape[3]):
-                for j in range(gridMat5D.shape[4]):
-                    shift_h = lc2utc[i, j]
-                    time_local[:,i, j] = date_range.values + np.timedelta64(int(shift_h), 'h')
+            # for i in range(gridMat5D.shape[3]):
+            #     for j in range(gridMat5D.shape[4]):
+            #         shift_h = lc2utc[i, j]
+            #         time_local[:,i, j] = date_range.values + np.timedelta64(int(shift_h), 'h')
 
             data_vars = {}
             for i, nome in enumerate(poluentes):
@@ -358,7 +360,8 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
                     gridMat4Dtemp[i,:, :, :],  # shape: (time, lat, lon)Add commentMore actions
                     dims=["time", "lat", "lon"],
                     coords={
-                        "time": (("time","lat", "lon"), time_local),
+                        # "time": (("time","lat", "lon"), time_local),
+                        "time": date_range,
                         "lon": xx[0, :],
                         "lat": yy[:,0][::-1]
                     }
@@ -366,9 +369,9 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
             ds = xr.Dataset(data_vars)
             
             ds.attrs['description'] = f"Emissões residenciais de {Combustivel} em toneladas"
-            arquivo_path = os.path.join(OutPath,'emissoes' , Combustivel , f'{2021+iy}')
+            arquivo_path = os.path.join(OutPath,'edgar' ,'emissoes', Combustivel , f'{2023+iy}')
             os.makedirs(arquivo_path, exist_ok=True)
-            arquivo_saida = os.path.join(arquivo_path , f'{2021+iy}_{im+1}.nc')
+            arquivo_saida = os.path.join(arquivo_path , f'{2023+iy}_{im+1}.nc')
             
             ds.to_netcdf(arquivo_saida, mode='w')
 

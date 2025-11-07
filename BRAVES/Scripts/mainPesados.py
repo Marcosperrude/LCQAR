@@ -71,7 +71,7 @@ from funcoes_pesados_exaustivas import (
 ## Definição dos caminhos dos arquivos
 
 #Insira o caminho para a pasta no seu computador:
-caminho_diretorio = "/home/marcosperrude/Documents/LCQAR/BRAVES/Inputs"
+caminho_diretorio = "/home/marcos/Documents/LCQAR/BRAVES/Inputs"
 
 #Caminhos padrão se o diretório completo com os dados de entrada forem baixados
 # caminho_arquivos_frota_categoria = r"2.FrotaPorMunicipio/junho"
@@ -185,7 +185,7 @@ frota_ano_processada = adicionando_dados_ibge_frota(frota_ano_processada, ibge_d
 frota_ano_processada = adicionando_codigo_ibge_mun_especiais_sem_espaco(frota_ano_processada)
 valores_suc = curva_sucateamento(anos_dados, frota_ano_processada)
 frota_processada_prob_ano_modelo = probabilidade_ano_modelo(frota_ano_processada, valores_suc)
-
+    
 #Processando frota combustivel
 frota_combustivel_processada = processamento_arquivos_frota_combustivel(caminho_diretorio, 
                                                                         caminho_arquivos_frota_comb,

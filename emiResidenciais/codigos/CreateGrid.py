@@ -13,7 +13,9 @@ def CreateGrid(Tam_pixel, minx, maxx, miny, maxy, decimal_places=6):
     
     x_coords = np.arange(minx, maxx, Tam_pixel)
     y_coords = np.arange(miny, maxy, Tam_pixel)
+
     grid_cells = [box(x, y, x + Tam_pixel, y + Tam_pixel) for x in x_coords for y in y_coords]
+    
     gridGerado = gpd.GeoDataFrame(geometry=grid_cells, crs='EPSG:4674')
     
     # Extraindo coordenadas do centroide COM ARREDONDAMENTO

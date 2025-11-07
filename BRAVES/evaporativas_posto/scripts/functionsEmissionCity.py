@@ -11,7 +11,7 @@ import os
 import pandas as pd
 from scipy.optimize import curve_fit
 import numpy as np
-from emissionFactors import rvp
+from functionsEmissionFactors import rvp
 
 
 # Função para formatar CNPJ apenas se necessário

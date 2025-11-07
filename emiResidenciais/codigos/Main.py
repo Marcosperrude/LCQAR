@@ -37,60 +37,61 @@ setores = os.path.join(DataPath, 'Setores')
 weekdis = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' ,'weekdis.csv'))
 
 hourdis = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' , 'hourdis.csv'))
-# Estimando as emissões para lenha e carvao por setor
 
+# Estimando as emissões para lenha e carvao por setor
 #malha com atributos - setores - csv
 
 #%% Definindo o grid
 # Definições da grade
 
-shp_cells = gpd.read_file(DataPath + '/2025-09-22_mesh_BR_GArBR.gpkg')
-gridGerado = shp_cells
-gridGerado = gridGerado.to_crs(crs='EPSG:4674')
+# shp_cells = gpd.read_file(DataPath + '/2025-09-22_mesh_BR_GArBR.gpkg')
+# gridGerado = shp_cells
+# gridGerado = gridGerado.to_crs(crs='EPSG:4674')
 
-# Tam_pixel = 1  # ~1 km
-# minx = -53.9   # longitude mínima (oeste)
-# maxx = -48.3   # longitude máxima (leste)
-# miny = -29.4   # latitude mínima (sul)
-# maxy = -25.9   # latitude máxima (norte)
+# Compatível EDGAR
+Tam_pixel = 0.1  # ~1 km
+minx = -74.1   # longitude mínima (oeste)
+maxx = -28.9   # longitude máxima (leste)
+miny = -33.8   # latitude mínima (sul)
+maxy = 5.4   # latitude máxima (norte)
 # minx, miny, maxx, maxy = BR_UF.total_bounds
-# minx, miny, maxx, maxy = shp_cells.total_bounds
 
-# gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
+gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
 
 
 # fig, ax = plt.subplots(figsize=(10, 10))
 # gridGerado.boundary.plot(ax=ax, color='gray')
 # BR_UF.boundary.plot(ax=ax, color='black')
 
-gridGerado['lon'] = gridGerado.geometry.centroid.x.round(6)
-gridGerado['lat'] =  gridGerado.geometry.centroid.y.round(6)
-gridGerado = gridGerado.drop_duplicates(subset=['lon', 'lat'])
+# gridGerado['lon'] = gridGerado.geometry.centroid.x.round(6)
+# gridGerado['lat'] =  gridGerado.geometry.centroid.y.round(6)
+# gridGerado = gridGerado.drop_duplicates(subset=['lon', 'lat'])
 
-xx, yy = np.meshgrid(np.sort(np.unique(gridGerado.lon)),
-                      np.sort(np.unique(gridGerado.lat)))
+# xx, yy = np.meshgrid(np.sort(np.unique(gridGerado.lon)),
+#                       np.sort(np.unique(gridGerado.lat)))
 
 
 estados_intersectados = BR_UF[BR_UF.intersects(gridGerado.unary_union)].copy()
 ufs = list(estados_intersectados['SIGLA_UF'])
 
+# lc2utc, tag = local2UTC(xx, yy)
+# np.savetxt(DataPath + "/lc2utc.csv", lc2utc, delimiter=",")
+
+lc2utc = np.loadtxt(DataPath + "/lc2utc.csv", delimiter=",")
 
 #%% Xarray de emissoes Lenha e Carvão
  
 
 #Calcular as emissões de lenha e carvão (ton)
 #Fonte dos dados : https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/Agregados_por_Setores_Censitarios/malha_com_atributos/setores/csv/
+
 WoodCoalDf = pd.read_csv(os.path.join(DataPath, 'BR_setores_CD2022.csv'))
 woodEmission, coalEmission, poluentesWoodCoal = emissionEstimateWoodCoal(
     WoodCoalDf,DataPath,OutPath)
 
+
 datasets = {}
-anos = 3
-
-# lc2utc, tag = local2UTC(xx, yy)
-# np.savetxt(DataPath + "/lc2utc.csv", lc2utc, delimiter=",")
-
-lc2utc = np.loadtxt(DataPath + "/lc2utc.csv", delimiter=",")
+anos = 1
 
 # lc2utc = lc2utc.T
 
@@ -287,135 +288,164 @@ for Combustivel, dt in zip(['Lenha','Carvao'], [woodEmission, coalEmission ]):
 # from rasterio import features
 #%%
 
-import xarray as xr
-import geopandas as gpd
-import matplotlib.pyplot as plt
-import numpy as np
-import rioxarray
+# import xarray as xr
+# import geopandas as gpd
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import rioxarray
 
-# --- 1. Dataset global EDGAR ---
-ds_global = xr.open_dataset(
-    '/home/marcos/Documents/LCQAR/emiResidenciais/inputs/bkl_BUILDINGS_emi_nc/v8.1_FT2022_AP_CO_2021_bkl_BUILDINGS_emi.nc'
-)
+# # --- 1. Dataset global EDGAR ---
+# ds_global = xr.open_dataset(
+#     '/home/marcos/Documents/LCQAR/emiResidenciais/inputs/bkl_BUILDINGS_emi_nc/v8.1_FT2022_AP_CO_2021_bkl_BUILDINGS_emi.nc'
+# )
 
-# --- 2. Shapefile Brasil ---
-# (supondo que BR_UF já está carregado)
-BR_UF = BR_UF.to_crs("EPSG:4326")
+# # --- 2. Shapefile Brasil ---
+# # (supondo que BR_UF já está carregado)
+# BR_UF = BR_UF.to_crs("EPSG:4326")
 
-# Escreve CRS no dataset se necessário
-if not ds_global.rio.crs:
-    ds_global = ds_global.rio.write_crs("EPSG:4326")
+# # Escreve CRS no dataset se necessário
+# if not ds_global.rio.crs:
+#     ds_global = ds_global.rio.write_crs("EPSG:4326")
 
-# Recorta o dataset ao território brasileiro
-ds_global_BR = ds_global.rio.clip(BR_UF.geometry, BR_UF.crs, drop=True)
+
+# # Recorta o dataset ao território brasileiro
+# ds_global_BR = ds_global.rio.clip(BR_UF.geometry, BR_UF.crs, drop=True, all_touched=True)
+
+# mean_emissions = ds_global_BR['emissions'].mean(dim='time')
+
+
+# lat_min = float(mean_emissions['lat'].min())
+# lat_max = float(mean_emissions['lat'].max())
+# lon_min = float(mean_emissions['lon'].min())
+# lon_max = float(mean_emissions['lon'].max())
+
+# # 2️⃣ Cria a figura
+# fig, ax = plt.subplots(figsize=(8,6))
+
+# # 3️⃣ Plota o raster (EDGAR)
+# mean_emissions.plot(ax=ax, cmap='inferno', alpha=0.8)
+
+# # 4️⃣ Plota a grade vetorial (borda dos polígonos)
+# gridGerado.boundary.plot(ax=ax, color='cyan', linewidth=0.2, alpha=0.7)
+
+# # 5️⃣ Ajustes visuais
+# ax.set_title('Verificação de compatibilidade espacial\nRaster EDGAR x Grade Gerada')
+# ax.set_xlabel('Longitude')
+# ax.set_ylabel('Latitude')
+
+# plt.show()
+
+
+
 
 # --- 3. Soma das emissões residenciais ---
-PM_total = None
-combustiveis = ["Butano", "Propano", "Lenha", "Carvao"]
+# PM_total = None
+# combustiveis = ["Butano", "Propano", "Lenha", "Carvao"]
 
-for i in combustiveis:
-    path = f"/home/marcos/Documents/LCQAR/emiResidenciais/outputs/emissoes/{i}/2021/2021_1.nc"
-    ds = xr.open_dataset(path)
-    PM = ds['CO']
-    PM_total = PM if PM_total is None else PM_total + PM
+# for i in combustiveis:
+#     path = f"/home/marcos/Documents/LCQAR/emiResidenciais/outputs/emissoes/{i}/2021/2021_1.nc"
+#     ds = xr.open_dataset(path)
+#     PM = ds['CO']
+#     PM_total = PM if PM_total is None else PM_total + PM
 
-# --- 4. Prepara o campo total ---
-PM_emi = PM_total.sum(dim='time') if 'time' in PM_total.dims else PM_total
+# # --- 4. Prepara o campo total ---
+# PM_emi = PM_total.sum(dim='time') if 'time' in PM_total.dims else PM_total
 
-# --- 5. Cria figura lado a lado ---
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-# --- (a) Mapa EDGAR recortado ---
-a1 = ds_global_BR['emissions'].isel(time=0)
-im1 = axes[0].pcolormesh(
-    a1['lon'], a1['lat'], a1.values,
-    cmap='turbo'
-)
-BR_UF.boundary.plot(ax=axes[0], color='black', linewidth=0.5)
-axes[0].set_title("EDGAR CO 2021 (Recorte Brasil)")
-cbar1 = fig.colorbar(im1, ax=axes[0], orientation='vertical', fraction=0.046, pad=0.04)
-cbar1.set_label("Concentração / Emissão (ton/mês)")
+# # --- 5. Cria figura lado a lado ---
+# fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+# # --- (a) Mapa EDGAR recortado ---
+# a1 = ds_global_BR['emissions'].isel(time=0)
+# im1 = axes[0].pcolormesh(
+#     a1['lon'], a1['lat'], a1.values,
+#     cmap='turbo'
+# )
+# BR_UF.boundary.plot(ax=axes[0], color='black', linewidth=0.5)
+# axes[0].set_title("EDGAR CO 2021 (Recorte Brasil)")
+# cbar1 = fig.colorbar(im1, ax=axes[0], orientation='vertical', fraction=0.046, pad=0.04)
+# cbar1.set_label("Concentração / Emissão (ton/mês)")
 
 
 
-# --- (b) Mapa das emissões residenciais ---
-a2 = PM_emi
-im2 = axes[1].pcolormesh(
-    a2['lon'], a2['lat'], a2.values,
-    cmap='turbo'
-)
-BR_UF.boundary.plot(ax=axes[1], color='black', linewidth=0.5)
-axes[1].set_title("Emissões Residenciais CO 2021")
-cbar2 = fig.colorbar(im2, ax=axes[1], orientation='vertical', fraction=0.046, pad=0.04)
-cbar2.set_label("Concentração / Emissão (ton/mês)")
+# # --- (b) Mapa das emissões residenciais ---
+# a2 = PM_emi
+# im2 = axes[1].pcolormesh(
+#     a2['lon'], a2['lat'], a2.values,
+#     cmap='turbo'
+# )
+# BR_UF.boundary.plot(ax=axes[1], color='black', linewidth=0.5)
+# axes[1].set_title("Emissões Residenciais CO 2021")
+# cbar2 = fig.colorbar(im2, ax=axes[1], orientation='vertical', fraction=0.046, pad=0.04)
+# cbar2.set_label("Concentração / Emissão (ton/mês)")
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 #%%
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
+# import matplotlib.pyplot as plt
+# from matplotlib.colors import LogNorm
 
-# --- 5. Cria figura lado a lado ---
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+# # --- 5. Cria figura lado a lado ---
+# fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-# --- (a) Mapa EDGAR recortado ---
-a1 = ds_global_BR['emissions'].isel(time=0)
-im1 = axes[0].pcolormesh(
-    a1['lon'], a1['lat'], a1.values,
-    cmap='turbo',
-    norm=LogNorm(vmin=0.1, vmax=10)
-)
-BR_UF.boundary.plot(ax=axes[0], color='black', linewidth=0.5)
-axes[0].set_title("EDGAR CO 2021 (Recorte Brasil)")
-axes[0].set_xlabel("")
-axes[0].set_ylabel("")
-cbar1 = fig.colorbar(im1, ax=axes[0], orientation='vertical', fraction=0.046, pad=0.04)
-cbar1.set_label("Concentração / Emissão (ton/mês)")
+# # --- (a) Mapa EDGAR recortado ---
+# a1 = ds_global_BR['emissions'].isel(time=0)
+# im1 = axes[0].pcolormesh(
+#     a1['lon'], a1['lat'], a1.values,
+#     cmap='turbo',
+#     norm=LogNorm(vmin=0.1, vmax=10)
+# )
+# BR_UF.boundary.plot(ax=axes[0], color='black', linewidth=0.5)
+# axes[0].set_title("EDGAR CO 2021 (Recorte Brasil)")
+# axes[0].set_xlabel("")
+# axes[0].set_ylabel("")
+# cbar1 = fig.colorbar(im1, ax=axes[0], orientation='vertical', fraction=0.046, pad=0.04)
+# cbar1.set_label("Concentração / Emissão (ton/mês)")
 
-# --- (b) Mapa das emissões residenciais ---
-a2 = PM_emi
-im2 = axes[1].pcolormesh(
-    a2['lon'], a2['lat'], a2.values,
-    cmap='turbo',
-    norm=LogNorm(vmin=0.1, vmax=10)
-)
-BR_UF.boundary.plot(ax=axes[1], color='black', linewidth=0.5)
-axes[1].set_title("Emissões Residenciais CO 2021")
-axes[1].set_xlabel("")
-axes[1].set_ylabel("")
-cbar2 = fig.colorbar(im2, ax=axes[1], orientation='vertical', fraction=0.046, pad=0.04)
-cbar2.set_label("Concentração / Emissão (ton/mês)")
+# # --- (b) Mapa das emissões residenciais ---
+# a2 = PM_emi
+# im2 = axes[1].pcolormesh(
+#     a2['lon'], a2['lat'], a2.values,
+#     cmap='turbo',
+#     norm=LogNorm(vmin=0.1, vmax=10)
+# )
+# BR_UF.boundary.plot(ax=axes[1], color='black', linewidth=0.5)
+# axes[1].set_title("Emissões Residenciais CO 2021")
+# axes[1].set_xlabel("")
+# axes[1].set_ylabel("")
+# cbar2 = fig.colorbar(im2, ax=axes[1], orientation='vertical', fraction=0.046, pad=0.04)
+# cbar2.set_label("Concentração / Emissão (ton/mês)")
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 #%%
-import numpy as np
-import matplotlib.pyplot as plt
+# import numpy as np
+# import matplotlib.pyplot as plt
 
-# Latitude e longitude de São Paulo
-lat_sp, lon_sp = -23.55, -46.63
+# # Latitude e longitude de São Paulo
+# lat_sp, lon_sp = -23.55, -46.63
 
-# Encontra o índice do pixel mais próximo
-lat_idx = np.abs(PM_total.lat - lat_sp).argmin().item()
-lon_idx = np.abs(PM_total.lon - lon_sp).argmin().item()
+# # Encontra o índice do pixel mais próximo
+# lat_idx = np.abs(PM_total.lat - lat_sp).argmin().item()
+# lon_idx = np.abs(PM_total.lon - lon_sp).argmin().item()
 
-# Seleciona a série temporal do pixel
-serie_sp = PM_total[:, lat_idx, lon_idx]
+# # Seleciona a série temporal do pixel
+# serie_sp = PM_total[:, lat_idx, lon_idx]
 
-# Plota a série temporal em escala linear
-plt.figure(figsize=(12, 5))
-plt.plot(serie_sp.time, serie_sp.values)
-plt.xlabel("Tempo")
-plt.ylabel("Emissão de CO (ton/mês)")
-plt.title("Série Temporal de Emissões de CO - São Paulo")
-plt.grid(True)
-plt.show()
+# # Plota a série temporal em escala linear
+# plt.figure(figsize=(12, 5))
+# plt.plot(serie_sp.time, serie_sp.values)
+# plt.xlabel("Tempo")
+# plt.ylabel("Emissão de CO (ton/mês)")
+# plt.title("Série Temporal de Emissões de CO - São Paulo")
+# plt.grid(True)
+# plt.show()
 
 #%%ANALISAR!!!!!!!
 
 #Fonte dos dados: https://dados.gov.br/dados/conjuntos-dados/vendas-de-derivados-de-petroleo-e-biocombustiveis
 glpDf = pd.read_csv(DataPath + '/vendas-anuais-de-glp-por-municipio_1.csv',encoding ='utf-8',  sep=';')
-glpDf.rename(columns={'CÓDIGO IBGE': 'CODIGO IBGE','MUNICÍPIO': 'MUNICIPIO'}, inplace=True)
 
+# Tratamento
+glpDf.rename(columns={'CÓDIGO IBGE': 'CODIGO IBGE','MUNICÍPIO': 'MUNICIPIO'}, inplace=True)
 glpDf = glpDf[glpDf['ANO'] >= 2000]
 glpDf =  glpDf[glpDf['P13'] >= 0 & glpDf['P13']]
 
@@ -425,21 +455,20 @@ propEmiCid, butEmiCid, poluentesGLP = emissionEstimateGLP(DataPath, OutPath, glp
 
 # prop_joinvile =  propEmiCid[propEmiCid['MUNICIPIO'] == 'JOINVILLE']
 datasetsglp = {}
-
-
 for Combustivel, dt in zip(['Propano', 'Butano'], [propEmiCid, butEmiCid]):
     print(f"Processando {Combustivel}...")
     
-    # Combustivel = 'Propano'
-    # dt = propEmiCid
+    # Combustivel = 'Butano'
+    # dt = butEmiCid
    
     # Adaptação para rodar apenas 2021,2022 e 2023
-    dt = dt[dt['ANO'] >= 2021]
+    anos = 1
+    dt = dt[dt['ANO'] >= 2024 - anos]
     
     gridMat5Dglp = EmissionsPixelsGLP(dt, BR_MUN, gridGerado, poluentesGLP, DataPath, Combustivel , ufs)
 
 
-    # Desagregação temporal
+    # Desagregação temporal 
     # ds = temporalDisagg(gridMat5Dglp, poluentesGLP, Combustivel, xx, yy)
     # datasetsglp[Combustivel] = ds
     

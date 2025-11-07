@@ -9,7 +9,7 @@ Created on Wed Apr 16 13:39:13 2025
 import os
 import xarray as xr
 from shapely.geometry import mapping
-from funcoes_edgar import *
+#from funcoes_edgar import *
 
 DataDir = r"C:\Users\marcos perrude\Documents\ENS5132"
 DataPath = os.path.join(DataDir, 'Inputs')

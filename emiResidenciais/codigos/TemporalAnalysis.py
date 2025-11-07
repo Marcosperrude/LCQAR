@@ -188,3 +188,132 @@ uso_lenha_agrupado = pd.DataFrame({
 }).T
 
 uso_lenha_agrupado.to_csv(DataPath + 'uso_lenha_agrupado.csv', index=True)  
+#%%
+import numpy as np
+
+DataDir = "/home/marcos/Documents/LCQAR/emiResidenciais"
+#Pasta dados
+DataPath = os.path.join(DataDir,'inputs')
+OutPath = os.path.join(DataDir, 'outputs')
+
+
+ds_global = xr.open_dataset(
+    '/home/marcos/Documents/LCQAR/emiResidenciais/inputs/bkl_BUILDINGS_emi_nc/v8.1_FT2022_AP_CO_2021_bkl_BUILDINGS_emi.nc')
+ds_global = ds_global.rio.write_crs("EPSG:4326")
+
+BR_UF = gpd.read_file(os.path.join(DataPath, 'BR_UF_2023', 'BR_UF_2023.shp'))
+BR_UF = BR_UF.to_crs("EPSG:4326")
+
+ds_global = ds_global.rio.set_spatial_dims(x_dim="lon", y_dim="lat", inplace=False)
+ds_global_BR = ds_global.rio.clip(BR_UF.geometry, BR_UF.crs, drop=True, all_touched = True)
+
+CO_list = []
+for i in ["Butano", "Propano", "Lenha", "Carvao"]:
+    path = f"/home/marcos/Documents/LCQAR/emiResidenciais/outputs/edgar/emissoes/{i}/2023/2023_1.nc"
+    ds = xr.open_dataset(path)
+    CO = ds['CO']
+    CO_list.append(CO)
+
+emiCO = sum(CO_list)
+emiCO = emiCO.rio.write_crs("EPSG:4326", inplace=False)
+if emiCO.lat[0] < emiCO.lat[-1]:
+    emiCO = emiCO.reindex(lat=list(reversed(emiCO.lat)))
+
+
+BR_UF = BR_UF.to_crs("EPSG:4326")
+
+emiCO = emiCO.rio.set_spatial_dims(x_dim="lon", y_dim="lat", inplace=False)
+
+# Recortar
+emiCO_br = emiCO.rio.clip(BR_UF.geometry, BR_UF.crs, drop=True, all_touched=True)
+
+
+emiCO_month = emiCO_br.resample(time="M").sum()
+
+#emi= (emiCO_month - ds_global_BR['emissions'][0])/ds_global_BR['emissions'][0]
+emi= emiCO_month - ds_global_BR['emissions'][0]
+
+emi2d = emi.squeeze()
+
+plt.figure(figsize=(10, 6))
+im = plt.pcolormesh(
+    emi2d.lon, emi2d.lat, emi2d,
+    shading='auto',
+    vmin= -0.5 , vmax=50, cmap='managua'
+)
+
+plt.title("Diferença de emissões (emiCO_month - ds_global_BR)")
+plt.xlabel("Longitude")
+plt.ylabel("Latitude")
+plt.colorbar(im, label="Δ emissões")
+plt.tight_layout()
+plt.show()
+#%%
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+lat_min = float(ds_global_BR.lat.min())
+lat_max = float(ds_global_BR.lat.max())
+lon_min = float(ds_global_BR.lon.min())
+lon_max = float(ds_global_BR.lon.max())
+
+emiCO_common = emiCO_month.sel(lat=slice(lat_max, lat_min), lon=slice(lon_min, lon_max))
+
+# Flatten remove dimensões espaciais
+x = ds_global_BR['emissions'][0].values.flatten()
+y = emiCO_month.values.flatten()
+
+mask = np.isfinite(x) & np.isfinite(y)
+x, y = x[mask], y[mask]
+
+plt.hexbin(x, y, gridsize=200, bins='log', cmap='viridis')
+plt.xlabel('Global reference (ds_global_BR)')
+plt.ylabel('Estimated (emiCO_month)')
+plt.title('Relação pixel a pixel entre bases')
+plt.colorbar(label='N° de pixels')
+plt.show()
+#%%
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from scipy import stats
+
+
+emi_aligned, ref_aligned = xr.align(emiCO_common, ds_global_BR['emissions'][0], join="inner")
+emi_flat = emi_aligned.values.flatten()
+ref_flat = ref_aligned.values.flatten()
+mask = np.isfinite(emi_flat) & np.isfinite(ref_flat)
+emi_flat = emi_flat[mask]
+ref_flat = ref_flat[mask]
+
+
+
+reg = LinearRegression().fit(ref_flat.reshape(-1, 1), emi_flat)
+r2 = reg.score(ref_flat.reshape(-1, 1), emi_flat)
+
+plt.figure(figsize=(7, 7))
+plt.scatter(ref_flat, emi_flat, alpha=0.2, s=6, color='steelblue', label="Pixels")
+x_line = np.linspace(ref_flat.min(), ref_flat.max())
+plt.plot(x_line, reg.predict(x_line.reshape(-1, 1)), color='red', lw=2,
+         label=f"Regressão linear (R² = {r2:.2f})")
+
+plt.legend()
+plt.show()
+
+#%%
+stats.spearmanr(ref_flat, emi_flat)
+
+
+
+#%%
+plt.figure(figsize=(8,4))
+plt.hist(diff_rel, bins=100, color='gray', edgecolor='black')
+plt.title("Distribuição das diferenças relativas (%)")
+plt.xlabel("Diferença percentual")
+plt.ylabel("Número de pixels")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+#%%
+

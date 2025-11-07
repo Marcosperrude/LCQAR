@@ -15,8 +15,8 @@ import xarray as xr
 from tqdm import tqdm   # barra de progresso
 import matplotlib.pyplot as plt
 import numpy as np 
-from emissionCity import carregar_vkt_city ,processar_combustivel
-from emissionFactors import carRefuelingEF, rvp
+from functionsEmissionCity import carregar_vkt_city ,processar_combustivel
+from functionsEmissionFactors import carRefuelingEF, rvp
 
 # Caminhos
 tablePath = "/home/marcos/Documents/LCQAR/BRAVES/evaporativas_posto"
