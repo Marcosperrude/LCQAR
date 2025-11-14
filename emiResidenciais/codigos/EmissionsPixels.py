@@ -215,7 +215,6 @@ def GridMat5D(combustivel, emiGrid, gridMat5D, poluentes, DataPath, uf, anos):
    
     
        # combustivel= 'Lenha'
-       # emiGrid = emiGridGLP
        # gridMat5D = gridMat5Dglp
        # poluentes = poluentesWoodCoal
        
@@ -297,7 +296,7 @@ def GridMat5D(combustivel, emiGrid, gridMat5D, poluentes, DataPath, uf, anos):
 
     return gridMat5D
 
-def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath , 
+def GridMat7D(weekdis_sul,weekdis_norte,hourdis,gridMat5D, poluentes, DataPath , 
               Combustivel,xx,yy , OutPath , lc2utc):
     
     # gridMat5D = gridMat5Dglp
@@ -323,21 +322,36 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
             # Localizar o fator de emissao de hora e dia
             weekdays = np.array([d.weekday() for d in date_range])  # 0=Segunda
             hours = np.array([d.hour for d in date_range])
-            week_factors = np.array([weekdis.loc[w, 'weekdis'] for w in weekdays])
-            hour_factors = np.array([hourdis.loc[h, 'hourdis'] for h in hours])
             
-            # desagregação taxa de emissao dia*hora
-            combined = week_factors * hour_factors
-            combined  =  combined/ combined.sum()  
+            week_factors_sul = np.array([weekdis_sul.iloc[w] for w in weekdays])
+            week_factors_norte = np.array([weekdis_norte.iloc[w] for w in weekdays])
+            
+            hour_factors = np.array([hourdis.iloc[h] for h in hours])
+            
+            # desagregação taxa de emissao dia*hora norte
+            combined_sul = week_factors_sul * hour_factors
+            combined_norte = week_factors_norte * hour_factors
+            
+            # Normalização
+            combined_sul  =  combined_sul/ combined_sul.sum()  
+            combined_norte  =  combined_norte/ combined_norte.sum() 
             
             # Reshape para [dia, hora]
-            combined = combined.reshape(days_in_month, 24)
+            combined_sul = combined_sul.reshape(days_in_month, 24)
+            combined_norte = combined_norte.reshape(days_in_month, 24)
             
+            # Desagregação dia/hora/poluente
             for iday in range(days_in_month):
                 for ihr in range(24):
-                    mes[:, iday, ihr, :, :] = gridMat5D[
-                        :, iy, im, :, :] * combined[iday, ihr]
-                   
+                    for pol in range (mes.shape[0]):
+                        
+                        # Multiplica emissões mensais pelos fatores diários e horários
+                        mes[pol, iday, ihr, :, :] = gridMat5D[pol, iy, im, :, :] * np.where(
+                            yy <= -20.0,
+                            combined_sul[iday, ihr],
+                            combined_norte[iday, ihr])
+            
+            
             gridMat4Dtemp = mes.reshape(
                mes.shape[0],
                mes.shape[1] * mes.shape[2],
@@ -363,7 +377,7 @@ def GridMat7D(weekdis,hourdis,gridMat5D, poluentes, DataPath ,
                         # "time": (("time","lat", "lon"), time_local),
                         "time": date_range,
                         "lon": xx[0, :],
-                        "lat": yy[:,0][::-1]
+                        "lat": yy[:,0]
                     }
                 )
             ds = xr.Dataset(data_vars)

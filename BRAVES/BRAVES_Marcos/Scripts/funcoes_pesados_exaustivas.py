@@ -730,9 +730,9 @@ def carregar_temperatura_media(caminho_diretorio):
     """
 
     temperatura_media = pd.read_excel(
-        caminho_diretorio + "/6.TemperaturaMediaNormalClimatologia1991-2020/Normal-Climatologica-TMEDSECA.xlsx",
+        caminho_diretorio + "/6.TemperaturaMediaNormalClimatologia1991-2020"
+        "/Normal-Climatologica-TMEDSECA.xlsx",
         skiprows=2)
-    
     temperatura_media = (temperatura_media
                          .rename(columns={col: col
                                           .lower()
@@ -2729,7 +2729,7 @@ def calculo_emissao_diurnal(matriz_completa, coluna_veiculos):
     
     # matriz_completa = matriz_leves_completa
     # coluna_veiculos = 'AUTOMOVEIS'
-    # matriz_completa = matriz_leves_completa
+    
     colunas_ed = ['FE_DIURNAL_0A15', 'FE_DIURNAL_10A25', 'FE_DIURNAL_20A35']
 
     # Encontrando o fator ED 
@@ -3321,9 +3321,9 @@ def calculo_SO2(matriz_exaustiva,caminho_diretorio, categoria):
 
 def calculo_emissoes_freios_pneus_estradas(resultados_categoria, matriz_categoria, categoria):
     
-    # resultados_categoria = resultados_leves_exaustivas
-    # matriz_categoria = matriz_leves_exaustivas
-    # categoria='LEVES'
+    # resultados_categoria = resultados_comleves_exaustivas
+    # matriz_categoria = matriz_comleves_exaustivas
+    # categoria='COMERCIAL LEVES'
 
     if categoria in ('LEVES', 'COMERCIAL LEVES'):
         

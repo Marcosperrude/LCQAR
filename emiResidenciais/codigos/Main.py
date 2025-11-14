@@ -34,9 +34,9 @@ BR_MUN = gpd.read_file(os.path.join(DataPath, 'BR_Municipios_2022' , 'BR_Municip
 #Fonte dos dados : https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/26565-malhas-de-setores-censitarios-divisoes-intramunicipais.html?edicao=41826&t=downloads
 setores = os.path.join(DataPath, 'Setores')
 
-weekdis = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' ,'weekdis.csv'))
-
-hourdis = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' , 'hourdis.csv'))
+weekdis_sul = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' ,'desagDailySul.csv') , index_col = 'day')
+weekdis_norte = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' ,'desagDailyNorte.csv'), index_col = 'day')
+hourdis = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' , 'desagHourly.csv'), index_col = 'hour')
 
 # Estimando as emissões para lenha e carvao por setor
 #malha com atributos - setores - csv
@@ -57,11 +57,12 @@ maxy = 5.4   # latitude máxima (norte)
 # minx, miny, maxx, maxy = BR_UF.total_bounds
 
 gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
-
+yy = yy[::-1]
 
 # fig, ax = plt.subplots(figsize=(10, 10))
 # gridGerado.boundary.plot(ax=ax, color='gray')
 # BR_UF.boundary.plot(ax=ax, color='black')
+
 
 # gridGerado['lon'] = gridGerado.geometry.centroid.x.round(6)
 # gridGerado['lat'] =  gridGerado.geometry.centroid.y.round(6)
@@ -69,7 +70,7 @@ gridGerado, xx, yy = CreateGrid(Tam_pixel,minx,maxx,miny,maxy)
 
 # xx, yy = np.meshgrid(np.sort(np.unique(gridGerado.lon)),
 #                       np.sort(np.unique(gridGerado.lat)))
-
+# yy = yy[::-1]
 
 estados_intersectados = BR_UF[BR_UF.intersects(gridGerado.unary_union)].copy()
 ufs = list(estados_intersectados['SIGLA_UF'])
@@ -127,7 +128,7 @@ for Combustivel, dt in zip(['Lenha','Carvao'], [woodEmission, coalEmission ]):
                               DataPath, uf, anos)
         
     #Fazendo a desagregação anual e mensal
-    gridMat7D = GridMat7D(weekdis,hourdis,gridMat5D,poluentesWoodCoal,DataPath, Combustivel,
+    gridMat7D = GridMat7D(weekdis_sul,weekdis_norte,hourdis,gridMat5D,poluentesWoodCoal,DataPath, Combustivel,
                    xx,yy , OutPath , lc2utc)
     
     # ds = temporalDisagg(gridMat7D, poluentesWoodCoal, Combustivel, xx, yy)

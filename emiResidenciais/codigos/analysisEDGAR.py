@@ -46,3 +46,10 @@ for data, titulo in zip(dataarrays, titulos):
 # Mann-Kendall
 results = apply_mann_kendall(SC)
 plot_correct_trend_map(results, estado, DataPath)
+#%%
+
+
+
+
+
+

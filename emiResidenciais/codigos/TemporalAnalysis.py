@@ -315,5 +315,76 @@ plt.ylabel("Número de pixels")
 plt.grid(True)
 plt.tight_layout()
 plt.show()
+
 #%%
 
+DataDir = "/home/marcos/Documents/LCQAR/emiResidenciais"
+#Pasta dados
+DataPath = os.path.join(DataDir,'inputs')
+OutPath = os.path.join(DataDir, 'outputs')
+
+
+# def clip_nc_dask(input_nc, shapefile, output_nc, chunks={"time": 10, "latitude": 400, "longitude": 400},
+#                  crs="EPSG:4326", all_touched=True):
+ 
+#     ds = xr.open_dataset(input_nc, chunks=chunks)
+
+#     print("🗺️  Definindo CRS e preparando recorte...")
+#     ds = ds.rio.write_crs(crs)
+
+#     print("✂️  Iniciando recorte com shapefile...")
+#     ds_clip = ds.rio.clip(shapefile.geometry, shapefile.crs, drop=True, all_touched=all_touched)
+
+#     ds_clip.to_netcdf(output_nc, compute=True)
+#     return output_nc
+
+
+# input_nc = os.path.join(DataPath,"CAMS-GLOB-TEMPO_Glb_0.1x0.1_tmp_weights_v3.1_daily_2020",
+#                                          "CAMS-GLOB-TEMPO_Glb_0.1x0.1_tmp_weights_v3.1_daily_2020.nc")
+# output_nc = os.path.join(DataPath,"CAMS-GLOB-TEMPO_Glb_0.1x0.1_tmp_weights_v3.1_daily_2020",
+#                                          "CAMS-GLOB-TEMPO_Glb_0.1x0.1_tmp_weights_v3.1_daily_2020_output.nc")
+
+# clip_nc_dask(input_nc, BR_UF, output_nc)
+
+# Obtendo desagregação horária
+desagCAMS_hour = xr.open_dataset(os.path.join(DataPath,"CAMS-GLOB-TEMPO_Glb_0.1x0.1_tmp_weights_v3.1_hourly",
+                                         "CAMS-GLOB-TEMPO_Glb_0.1x0.1_tmp_weights_v3.1_daily_2019.nc"))
+desagCAMS_hour = desagCAMS_hour.rio.write_crs("EPSG:4326")
+desagCAMS_hour = desagCAMS_hour.rio.clip(BR_UF.geometry.values, BR_UF.crs, drop=True, all_touched = True)
+desag = desagCAMS_hour['FH_res_others'].mean(dim=['latitude', 'longitude'], skipna=True).values
+desag = desag/desag.sum()
+pd.DataFrame(desag).to_csv(DataPath + '/desagHourly.csv', index = True)
+
+
+desagCAMS_daily_2020 = xr.open_dataset(os.path.join(DataPath,"CAMS-GLOB-TEMPO_Glb_0.1x0.1_tmp_weights_v3.1_daily_2020",
+                                         "CAMS-GLOB-TEMPO_Glb_0.1x0.1_tmp_weights_v3.1_daily_2020_output.nc"))
+desagCAMS_daily_2020 = desagCAMS_daily_2020.rio.write_crs("EPSG:4326")
+
+desagCAMS_sul = desagCAMS_daily_2020.sel(latitude=desagCAMS_daily_2020.latitude < -20)
+desagCAMS_norte = desagCAMS_daily_2020.sel(latitude=desagCAMS_daily_2020.latitude > -20)
+
+media_sul = desagCAMS_sul['FD_res'].mean(dim=['latitude', 'longitude'], skipna=True)
+media_norte = desagCAMS_norte['FD_res'].mean(dim=['latitude', 'longitude'], skipna=True)
+
+# fig, ax = plt.subplots(2, 2, figsize=(10, 8))
+# desagCAMS_sul['FD_res'][0].plot(ax=ax[0,0], cmap='viridis')
+# desagCAMS_norte['FD_res'][0].plot(ax=ax[0,1], cmap='viridis')
+# desagCAMS_sul['FD_res'][150].plot(ax=ax[1,0], cmap='viridis')
+# desagCAMS_norte['FD_res'][150].plot(ax=ax[1,1], cmap='viridis')
+
+# Desagregação sul 
+media_sul_semana = media_sul.groupby('time.dayofweek').mean()/(media_sul.groupby('time.dayofweek').mean().sum())
+media_sul_semana = media_sul_semana.values
+pd.DataFrame(media_sul_semana).to_csv(DataPath + '/desagDailySul.csv', index = True)
+
+# Desagregação norte 
+media_norme_semana = media_norte.groupby('time.dayofweek').mean()/(media_norte.groupby('time.dayofweek').mean().sum())
+media_norme_semana = media_norme_semana.values
+pd.DataFrame(media_norme_semana).to_csv(DataPath + '/desagDailyNorte.csv', index = True)
+
+
+# # Filtrar o período de abril a novembro
+# media_sul_periodo_n = media_sul.sel(time=slice("2020-04-01", "2020-11-30"))
+# # Agrupar por dia da semana e calcular a média (0 = segunda, 6 = domingo)
+# media_sul_semana_n = media_sul_periodo.groupby("time.dayofweek").mean() / (media_sul_periodo.groupby("time.dayofweek").mean().sum())
+# media_sul_semana_n = media_sul_semana_n
