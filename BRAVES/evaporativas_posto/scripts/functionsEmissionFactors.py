@@ -11,6 +11,7 @@ Desenvolvido com base em estudos da EPA
 
 Autor: Marcos Perrude  
 Data: 09 de outubro de 2025
+
 """
 from scipy.optimize import curve_fit
 

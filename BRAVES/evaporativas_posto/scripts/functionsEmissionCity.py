@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
 Módulo para processamento e cálculo das emissões evaporativas associadas ao
 uso de combustíveis automotivos (Gasolina C e Etanol Hidratado) em postos
@@ -15,7 +16,9 @@ permitindo estimar emissões de evaporação durante etapas como:
 
 Autor: Marcos Perrude  
 Data: 09 de outubro de 2025
+
 """
+
 import geopandas as gpd
 import re
 import os

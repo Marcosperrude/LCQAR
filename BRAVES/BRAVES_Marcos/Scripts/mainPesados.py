@@ -71,7 +71,7 @@ from funcoes_pesados_exaustivas import (
 ## Definição dos caminhos dos arquivos
 
 #Insira o caminho para a pasta no seu computador:
-caminho_diretorio = "/home/marcosperrude/Documents/LCQAR/BRAVES/Inputs"
+caminho_diretorio = "/home/marcos/Documents/LCQAR/BRAVES/Inputs"
 
 #Caminhos padrão se o diretório completo com os dados de entrada forem baixados
 # caminho_arquivos_frota_categoria = r"2.FrotaPorMunicipio/junho"

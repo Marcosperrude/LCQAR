@@ -13,8 +13,9 @@ inventários atmosféricos que dependem de temperatura local — como emissões
 evaporativas de combustíveis.
 
 Autor: Marcos Perrude
-"""
+Data: 09 de outubro de 2025
 
+"""
 #%%
 
 import geopandas as gpd
@@ -82,11 +83,6 @@ for arq in arquivos_temp:
     inicio_mes = f"{ano}-{mes:02d}-01"
     fim_mes    = (pd.Timestamp(inicio_mes) + pd.offsets.MonthEnd(1)).strftime("%Y-%m-%d")
     temp_xr = temp_xr.sel(time=slice(inicio_mes, fim_mes))
-    temp_monthly = temp_xr.rio.write_crs(shp_mun.crs)
-    
-# Obter média de temperatura por hora em cada cidade 
-# temp_xr = temp_xr.rio.write_crs(a.crs)
-
     temp_monthly = temp_xr.rio.write_crs(shp_mun.crs)
     
     # Loop por município

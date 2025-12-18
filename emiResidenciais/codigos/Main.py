@@ -34,6 +34,7 @@ BR_MUN = gpd.read_file(os.path.join(DataPath, 'BR_Municipios_2022' , 'BR_Municip
 #Fonte dos dados : https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/26565-malhas-de-setores-censitarios-divisoes-intramunicipais.html?edicao=41826&t=downloads
 setores = os.path.join(DataPath, 'Setores')
 
+# Fatores de desagregação diária (Sul e Norte) e Horária
 weekdis_sul = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' ,'desagDailySul.csv') , index_col = 'day')
 weekdis_norte = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' ,'desagDailyNorte.csv'), index_col = 'day')
 hourdis = pd.read_csv(os.path.join(DataPath,'desagregacao_dia_hora' , 'desagHourly.csv'), index_col = 'hour')

@@ -16,6 +16,7 @@ incluindo os mecanismos de:
 
 Autor: Marcos Perrude  
 Data: 09 de outubro de 2025
+
 """
 #%%
 import geopandas as gpd
@@ -108,8 +109,8 @@ for ano in [2021]:
     cidades = sheet_volume["COD_LOCALIDADE_IBGE_D"].unique().astype(int)
     
     # Mapear as colunas com consumo
-    # colunas_meses = [c for c in sheet_volume.columns if str(c).startswith("20")]
-    colunas_meses = [202101]
+    colunas_meses = [c for c in sheet_volume.columns if str(c).startswith("20")]
+    # colunas_meses = [202101]
 
     #Loop para os meses
     for mes in colunas_meses:
@@ -139,6 +140,11 @@ for ano in [2021]:
             # Carregar arquivos de VKT ja corrigido (apenas celulas com postos)
             desg_consumo_city = carregar_vkt_city(postos_ibama, postos_anp, desg_consumo,
                                                       cidade, shp_cells)
+            
+            if desg_consumo_city.empty:
+                cidades_sem_vkt.append((cidade, mes))
+                continue
+            
             # Se o volume for vazio, pula para outro combustivel
              
             # FIltrar a temperatura média da cidade para o mes analisado
@@ -208,80 +214,79 @@ for ano in [2021]:
                 emissoes.to_parquet(filename_parquet, index=False)
             except Exception as e:
                 print(f"Erro ao salvar acidade {cidade}: {e}")
-    
+
 #%%
 
-florianopolis = pd.read_parquet(outPath + '/emissoes_postos/emissoes_2021_01/emissoes_2021_01_1200013.parquet')
 
+# florianopolis = pd.read_parquet(outPath + '/emissoes_postos/emissoes_2021_01/emissoes_2021_01_1200013.parquet')
 
+# # Garantir que os IDs são compatíveis
+# shp_cells['cell_id'] = shp_cells['fid'].astype(int)
+# florianopolis['cell_id'] = florianopolis['cell_id'].astype(int)
 
-# Garantir que os IDs são compatíveis
-shp_cells['cell_id'] = shp_cells['fid'].astype(int)
-florianopolis['cell_id'] = florianopolis['cell_id'].astype(int)
+# ## Converter datetime
+# florianopolis['datetime'] = pd.to_datetime(florianopolis['datetime'])
 
-## Converter datetime
-florianopolis['datetime'] = pd.to_datetime(florianopolis['datetime'])
+# # Definir resolução do grid (a partir das células)
+# # Aqui assumimos que as células são quadradas e têm a mesma dimensão
+# res = shp_cells.geometry.iloc[0].bounds  # xmin, ymin, xmax, ymax
+# cell_size = res[2] - res[0]
 
-# Definir resolução do grid (a partir das células)
-# Aqui assumimos que as células são quadradas e têm a mesma dimensão
-res = shp_cells.geometry.iloc[0].bounds  # xmin, ymin, xmax, ymax
-cell_size = res[2] - res[0]
+# # Criar grid com base nos limites totais das células
+# xmin, ymin, xmax, ymax = shp_cells.total_bounds
 
-# Criar grid com base nos limites totais das células
-xmin, ymin, xmax, ymax = shp_cells.total_bounds
+# # Criar coordenadas dos pixels (centros das células)
+# x_coords = np.arange(xmin + cell_size / 2, xmax, cell_size)
+# y_coords = np.arange(ymin + cell_size / 2, ymax, cell_size)
 
-# Criar coordenadas dos pixels (centros das células)
-x_coords = np.arange(xmin + cell_size / 2, xmax, cell_size)
-y_coords = np.arange(ymin + cell_size / 2, ymax, cell_size)
+# # Criar arrays vazios para o dataset
+# times = sorted(florianopolis['datetime'].unique())
+# emis_array = np.full((len(times), len(y_coords), len(x_coords)), np.nan)
 
-# Criar arrays vazios para o dataset
-times = sorted(florianopolis['datetime'].unique())
-emis_array = np.full((len(times), len(y_coords), len(x_coords)), np.nan)
+# # Criar um mapeamento rápido de cell_id -> índice da célula
+# cell_index = {cid: i for i, cid in enumerate(shp_cells['cell_id'])}
 
-# Criar um mapeamento rápido de cell_id -> índice da célula
-cell_index = {cid: i for i, cid in enumerate(shp_cells['cell_id'])}
+# # Criar uma correspondência entre cada cell_id e suas coordenadas (x, y)
+# centroids = shp_cells.copy()
+# centroids['x'] = centroids.geometry.centroid.x
+# centroids['y'] = centroids.geometry.centroid.y
 
-# Criar uma correspondência entre cada cell_id e suas coordenadas (x, y)
-centroids = shp_cells.copy()
-centroids['x'] = centroids.geometry.centroid.x
-centroids['y'] = centroids.geometry.centroid.y
+# # Mapear as emissões para o pixel correspondente
+# for t_i, t in enumerate(times):
+#     df_t = florianopolis[florianopolis['datetime'] == t]
+#     for _, row in df_t.iterrows():
+#         cell = centroids.loc[centroids['cell_id'] == row['cell_id']]
+#         if not cell.empty:
+#             cx = cell['x'].values[0]
+#             cy = cell['y'].values[0]
+#             # Encontrar índices correspondentes no grid
+#             ix = np.argmin(np.abs(x_coords - cx))
+#             iy = np.argmin(np.abs(y_coords - cy))
+#             emis_array[t_i, iy, ix] = row['VOC_AEHC_93_Porc(g)']
 
-# Mapear as emissões para o pixel correspondente
-for t_i, t in enumerate(times):
-    df_t = florianopolis[florianopolis['datetime'] == t]
-    for _, row in df_t.iterrows():
-        cell = centroids.loc[centroids['cell_id'] == row['cell_id']]
-        if not cell.empty:
-            cx = cell['x'].values[0]
-            cy = cell['y'].values[0]
-            # Encontrar índices correspondentes no grid
-            ix = np.argmin(np.abs(x_coords - cx))
-            iy = np.argmin(np.abs(y_coords - cy))
-            emis_array[t_i, iy, ix] = row['VOC_AEHC_93_Porc(g)']
+# # Criar Dataset xarray
+# ds = xr.Dataset(
+#     {
+#         "VOC_AEHC_93_Porc": (["time", "lat", "lon"], emis_array)
+#     },
+#     coords={
+#         "time": times,
+#         "lat": y_coords,
+#         "lon": x_coords
+#     },
+# )
 
-# Criar Dataset xarray
-ds = xr.Dataset(
-    {
-        "VOC_AEHC_93_Porc": (["time", "lat", "lon"], emis_array)
-    },
-    coords={
-        "time": times,
-        "lat": y_coords,
-        "lon": x_coords
-    },
-)
+# ds["VOC_AEHC_93_Porc"].sel(time=ds.time.values[0])
 
-ds["VOC_AEHC_93_Porc"].sel(time=ds.time.values[0])
-
-# --- Plot simples ---
-plt.figure(figsize=(8, 6))
-ds["VOC_AEHC_93_Porc"].sel(time=ds.time.values[0]).plot(cmap="inferno",
-    cbar_kwargs={'label': 'Emissão de VOC (kg/h)'}
-)
-plt.xlabel("Longitude")
-plt.ylabel("Latitude")
-plt.grid(False)
-plt.show()
+# # --- Plot simples ---
+# plt.figure(figsize=(8, 6))
+# ds["VOC_AEHC_93_Porc"].sel(time=ds.time.values[0]).plot(cmap="inferno",
+#     cbar_kwargs={'label': 'Emissão de VOC (kg/h)'}
+# )
+# plt.xlabel("Longitude")
+# plt.ylabel("Latitude")
+# plt.grid(False)
+# plt.show()
 #%%
 
 # emissao_total = (florianopolis.groupby(['datetime', 'city_id'], group_keys=True)['VOC_AEHC_93_Porc(g)'].sum().reset_index())

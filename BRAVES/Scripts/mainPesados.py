@@ -607,7 +607,7 @@ resultados_comleves_exaustivas = consolidacao_evaporativas(matriz_comleves_compl
                                                   resultados_comleves_exaustivas)
 
 #%%
-emis = pd.read_excel(caminho_diretorio + '/EmissCityBRAVES_LightDuty_20191_.xlsx')
+emis = pd.read_excel(caminho_diretorio + '/EmissCityBRAVES_HeavyDuty_20191_.xlsx')
 
 
 mapeamento_colunas = {
@@ -620,8 +620,8 @@ mapeamento_colunas = {
     'EXH_NOX': 'EMISSAO NOX',
     'EXH_RCHO': 'EMISSAO RCHO',
     'EXH_PMFINE': 'EMISSAO MP',
-    'EXH_CO2': 'EMISSAO CO2',   # ⚠ conferir se está correto (pode estar invertido com N2O)
-    'EXH_N2O': 'EMISSAO N2O',   # ⚠ idem
+    'EXH_CO2': 'EMISSAO CO2',
+    'EXH_N2O': 'EMISSAO N2O',   
     'EXH_SO2': 'EMISSAO SO2',
     'RFUEL_NMHC': 'EMISSAO NMHC REAB',
     'EXH_CO2eq': 'EMISSAO CO2eq',
@@ -635,13 +635,14 @@ mapeamento_colunas = {
 
 emis = emis.rename(columns=mapeamento_colunas)
 
+emis.drop(columns = ['EMISSAO NMHC REAB','EMISSAO RCHO','EMISSAO DIURNAL','EMISSAO HOT SOAK','EMISSAO RUNNING LOSSES'], inplace = True)
 
 # Definir colunas numéricas de emissões (intersecção das duas tabelas)
 cols_emissoes = [c for c in emis.columns if c.startswith("EMISSAO") or c.startswith("EMISSOES")]
 
 # Merge pelos identificadores (sem MES já que emis não tem)
 comparacao = emis.merge(
-    resultados_leves_exaustivas,
+    resultados_pesados_exaustivas,
     on=["ANO", "CODIGO IBGE"],
     suffixes=("_thiago", "_marcos")
 )
@@ -653,7 +654,7 @@ for col in cols_emissoes:
     col_diff = col + "_DIF_porcentagem"
     comparacao[col_diff] = ((comparacao[col_thiago] - comparacao[col_marcos]) / comparacao[col_thiago]) * 100
 
-comparacao.to_csv('/home/marcos/Documents/LCQAR/BRAVES/BRAVES_Marcos/outputs/comparação_leves.csv')
+comparacao.to_csv('/home/marcos/Documents/LCQAR/BRAVES/BRAVES_Marcos/outputs/comparação_pesados.csv')
 #%%
 
 # print("Exibindo emissões leves")
